@@ -52,3 +52,8 @@ class Tag(BaseModel):
     name:str
     created_at:datetime = Field(default_factory=_now)
 
+class Chunk(BaseModel):
+    id:str = Field(default_factory=_uid)
+    article_id:str
+    text:str
+    position:int
