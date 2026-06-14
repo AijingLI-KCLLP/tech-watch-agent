@@ -1,8 +1,8 @@
- .env
- .venv/
- __pycache__/
- *.pyc
- .chroma/
- *.db
- .idea/
- .claude
+.env
+.venv/
+.chroma/
+*.db
+.idea/
+.claude
+__pycache__/
+*.pyc

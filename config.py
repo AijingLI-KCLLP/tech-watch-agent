@@ -1,0 +1,27 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+
+ROOT = Path(__file__).parent
+DATA_DIR = ROOT / 'data'
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+SQLITE_PATH = DATA_DIR / 'tech_watch.db'
+CHROMA_PATH = DATA_DIR / 'chroma'
+CHROMA_COLLECTION = "tech_watch"
+
+LMSTUDIO_BASE_URL = os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")
+LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL", "openai/gpt-oss-20b")
+LMSTUDIO_EMBEDDING_MODEL = os.getenv("LMSTUDIO_EMBEDDING_MODEL", "text-embedding-nomic-embed-text-v1.5")
+LMSTUDIO_API_KEY = "lm-studio"
+
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
+
+# Chunking
+CHUNK_SIZE = 800  # 字符
+CHUNK_OVERLAP = 100
+
+# num of chunk for each retrieval
+TOP_K = 5
