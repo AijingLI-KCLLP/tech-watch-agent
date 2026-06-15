@@ -1,7 +1,5 @@
 from typing import TypedDict
 
-from click import prompt
-
 from adapters.embedder import embed
 from adapters.store import query_chunks
 from adapters.llm import get_llm
@@ -25,7 +23,7 @@ def retrieve_node(state: RetrieveState) -> dict:
 def generate_node(state: RetrieveState) -> dict:
     hits = state["hits"]
     if not hits:
-        return {"answer": "No relevant context found. Run `veille <topic>` first."}
+        return {"answer": "No relevant context found. Run `watch <topic>` first."}
 
     context = "\n\n---\n\n".join(
         f"[source: {h['article_id']}]\n{h['text']}" for h in hits
