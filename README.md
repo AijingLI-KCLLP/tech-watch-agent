@@ -2,6 +2,8 @@
 
 CLI agent that ingests web articles on a topic and answers questions with source citations (RAG).
 
+> **Status — work in progress.** This is the TP milestone: ingest + RAG only. The full feature set (source legitimacy scoring, auto-categorization, manual tag editing, value-added republishing, web UI) lands in the September 2026 milestone. See [Roadmap](#roadmap) below.
+
 ## Workflow
 
 Two independent LangGraph pipelines:
@@ -75,6 +77,25 @@ If nothing has been ingested yet:
 ```
 No relevant context found. Run `watch <topic>` first.
 ```
+
+## Roadmap
+
+**Done :**
+- `watch <topic>` — Tavily search, chunking, embedding, dual storage.
+- `ask <question>` — vector retrieval + LLM answer with source ids.
+
+**Coming soon**
+- Source legitimacy / credibility scoring (`Source.credibility_score` is wired in the schema but always `None` today).
+- "Why interesting" rationale per source.
+- Auto-categorization of articles (PRO / PERSO).
+- Auto-tagging beyond the topic keyword.
+- Article summaries.
+- Manual tag editing.
+- Capture pipelines (web form, bot, dictaphone).
+- Value-added republishing.
+- FastAPI web UI on top of the same two graphs.
+
+The data model already reserves the fields for the September features — no rewrite needed, only additive nodes/agents.
 
 ## Project layout
 

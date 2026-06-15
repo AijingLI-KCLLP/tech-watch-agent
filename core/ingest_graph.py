@@ -66,3 +66,5 @@ def build_ingest_graph():
     g.add_edge("chunk", "embed")
     g.add_edge("embed", "store")
     g.add_edge("store",END)
+
+    return g.compile()
