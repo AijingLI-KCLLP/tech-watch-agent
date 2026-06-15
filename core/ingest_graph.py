@@ -14,12 +14,12 @@ class IngestState(TypedDict):
     chunks: list[Chunk]
     embeddings: list[list[float]]
 
-def _split(text: str, step:int, overlap:int) ->list[str]:
+def _split(text: str, size:int, overlap:int) ->list[str]:
     pieces = []
     start = 0
-    step = step - overlap
+    step = size - overlap
     while start < len(text):
-        pieces.append(text[start:start + step])
+        pieces.append(text[start:start + size])
         start += step
     return pieces
 
@@ -40,7 +40,7 @@ def chunk_node(state:IngestState) -> dict:
     for article in state["articles"]:
         for i, text in enumerate(_split(article.content, CHUNK_SIZE, CHUNK_OVERLAP)):
             chunks.append(Chunk(article_id=article.id, text=text,position=i))
-        return {"chunks":chunks}
+    return {"chunks":chunks}
 
 def embed_node(state:IngestState) -> dict:
     vectors = embed([c.text for c in state["chunks"]])
