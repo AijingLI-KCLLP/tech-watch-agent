@@ -4,7 +4,6 @@ from adapters.search import search
 from adapters.store import save_article, save_chunks, save_source
 from config import CHUNK_OVERLAP, CHUNK_SIZE
 from core.models import Article, Chunk, Source
-
 from langgraph.graph import END, START, StateGraph
 
 class IngestState(TypedDict):

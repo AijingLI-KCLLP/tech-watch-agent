@@ -1,0 +1,55 @@
+from typing import TypedDict
+
+from click import prompt
+
+from adapters.embedder import embed
+from adapters.store import query_chunks
+from adapters.llm import get_llm
+from config import TOP_K
+from langgraph.graph import END, START, StateGraph
+
+class RetrieveState(TypedDict):
+    question:str
+    query_embedding: list[float]
+    hits: list[dict]
+    answer: str
+
+def embed_query_node(state: RetrieveState) -> dict:
+    vectors = embed([state["question"]])
+    return {"query_embedding": vectors[0]}
+
+def retrieve_node(state: RetrieveState) -> dict:
+    hits = query_chunks(state["query_embedding"], TOP_K)
+    return {"hits": hits}
+
+def generate_node(state: RetrieveState) -> dict:
+    hits = state["hits"]
+    if not hits:
+        return {"answer": "No relevant context found. Run `veille <topic>` first."}
+
+    context = "\n\n---\n\n".join(
+        f"[source: {h['article_id']}]\n{h['text']}" for h in hits
+    )
+    prompt = (
+        "Answer the question using ONLY the context below. "
+        "Cite the source id like [source: <id>] after each claim. "
+        "If the context does not contain the answer, say so.\n\n"
+        f"Context:\n{context}\n\n"
+        f"Question: {state['question']}"
+    )
+    msg = get_llm().invoke(prompt)
+    return {"answer": msg.content}
+
+def build_retrieve_graph():
+    g = StateGraph(RetrieveState)
+
+    g.add_node("embed_query", embed_query_node)
+    g.add_node("retrieve", retrieve_node)
+    g.add_node("generate", generate_node)
+
+    g.add_edge(START,"embed_query")
+    g.add_edge("embed_query", "retrieve")
+    g.add_edge("retrieve", "generate")
+    g.add_edge("generate", END)
+
+    return g.compile()
