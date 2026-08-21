@@ -24,6 +24,11 @@ class Category(str, Enum):
     PRO = "pro"
     PERSO = "perso"
 
+class OriginalType(str, Enum):
+    TEXT = "text"
+    IMAGE = "image"
+    PDF = "pdf"
+
 class Source(BaseModel):
     id:str = Field(default_factory=_uid)
     name:str
@@ -32,25 +37,30 @@ class Source(BaseModel):
 
     # later...
     credibility_score: float | None = None
-    why_interest:str | None = None
+    source_summary:str | None = None
 
 class Article(BaseModel):
     id:str = Field(default_factory=_uid)
     source_id:str
-    url:HttpUrl
+    url:HttpUrl | None = None
     title:str
     content:str
     fetched_at:datetime = Field(default_factory=_now)
 
     # later...
     category:Category=Category.UNSORTED
-    tags:list[str] = Field(default_factory=list)
+    n_tags:int = 0
     summary:str | None = None
+    original_type:OriginalType | None = None
 
 class Tag(BaseModel):
     id:str = Field(default_factory=_uid)
     name:str
     created_at:datetime = Field(default_factory=_now)
+
+class ArticleTag(BaseModel):
+    article_id:str
+    tag_id:str
 
 class Chunk(BaseModel):
     id:str = Field(default_factory=_uid)

@@ -39,7 +39,7 @@ def search(topic:str, max_results:int=5 ) -> list[tuple[Source, Article]]:
             url=url,
             title=r.get("title") or url,
             content=body,
-            tags=[topic],
+            n_tags=1,
         )
 
         pairs.append((source, article))

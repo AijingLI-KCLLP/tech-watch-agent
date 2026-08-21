@@ -1,0 +1,45 @@
+erDiagram
+    Source {
+        string id
+        string name
+        string url
+        SourceType type
+        float credibility_score
+        string source_summary
+    }
+
+    Article {
+        string id
+        string source_id
+        string url
+        string title
+        string content
+        datetime fetched_at
+        Category category
+        int n_tags
+        string summary
+        OriginalType original_type
+    }
+
+    Tag {
+        string id
+        string name
+        datetime created_at
+    }
+
+    ArticleTag {
+        string article_id
+        string tag_id
+    }
+
+    Chunk {
+        string id
+        string article_id
+        string text
+        int position
+    }
+
+    Source ||--o{ Article : "source_id"
+    Article ||--o{ ArticleTag : "article_id"
+    Tag ||--o{ ArticleTag : "tag_id"
+    Article ||--o{ Chunk : "article_id"

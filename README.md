@@ -8,6 +8,8 @@ CLI agent that ingests web articles on a topic and answers questions with source
 
 Two independent LangGraph pipelines:
 
+![docs/diagrams/agent_workflow.png](docs/diagrams/agent_workflow.png)
+
 ```mermaid
 flowchart LR
     subgraph Ingest["watch <topic>"]
@@ -34,14 +36,15 @@ flowchart LR
 | Vectors | ChromaDB |
 | Relational | SQLite |
 
-## Setup
+
+## Install & Setup
 
 1. Open LM Studio. Load both models. Start the server on port 1234. Verify:
    ```bash
    curl http://localhost:1234/v1/models
    ```
 2. Add your Tavily key to `.env`:
-   ```
+   ```env
    TAVILY_API_KEY=tvly-...
    ```
 3. Install:
@@ -80,13 +83,13 @@ No relevant context found. Run `watch <topic>` first.
 
 ## Roadmap
 
-**Done :**
+**Done:**
 - `watch <topic>` — Tavily search, chunking, embedding, dual storage.
 - `ask <question>` — vector retrieval + LLM answer with source ids.
 
-**Coming soon**
+**Coming soon:**
 - Source legitimacy / credibility scoring (`Source.credibility_score` is wired in the schema but always `None` today).
-- "Why interesting" rationale per source.
+- Source summaries / editorial focus metadata.
 - Auto-categorization of articles (PRO / PERSO).
 - Auto-tagging beyond the topic keyword.
 - Article summaries.
@@ -104,7 +107,7 @@ tech_watch_agent/
 ├── cli.py                 # entry point
 ├── config.py              # paths, model names, chunk size, top_k
 ├── core/
-│   ├── models.py          # Source / Article / Tag / Chunk
+│   ├── models.py          # Source / Article / Tag / ArticleTag / Chunk
 │   ├── ingest_graph.py    # search → chunk → embed → store
 │   └── retrieve_graph.py  # embed_query → retrieve → generate
 ├── adapters/              # only layer talking to the outside world
@@ -114,3 +117,70 @@ tech_watch_agent/
 │   └── store.py           # SQLite + ChromaDB
 └── data/                  # gitignored — DBs live here
 ```
+
+## Data Dictionary
+
+### Enums
+
+- `SourceType`: `blog`, `article`, `video`, `podcast`, `social`, `other`
+- `Category`: `unsorted`, `pro`, `perso`
+- `OriginalType`:`text`,`image`,`pdf`
+
+### Entities
+
+#### `Source`
+
+| Field | Type | Required | Notes                                                                               |
+|---|---|---|-------------------------------------------------------------------------------------|
+| `id` | `str` | Yes | Unique identifier for the source                                                    |
+| `name` | `str` | Yes | Name of the source, if type is social account, it should be plateform_id, ig X_haha |
+| `url` | `HttpUrl` | Yes | Canonical URL of the source                                                         |
+| `type` | `SourceType` | Yes | Type of source such as article site, blog, video, or social account                 |
+| `credibility_score` | `float \| None` | No | Credibility score assigned to the source                                            |
+| `source_summary` | `str \| None` | No | Short description of the source and its editorial focus                             |
+
+#### `Article`
+
+| Field           | Type              | Required | Notes                                                                         |
+|-----------------|-------------------|----------|-------------------------------------------------------------------------------|
+| `id`            | `str`             | Yes      | Unique identifier for the article                                             |
+| `source_id`     | `str`             | Yes      | Identifier of the source that published the article                           |
+| `url`           | `HttpUrl \| None` | No       | Canonical URL of the article, could be none if input is file added without url |
+| `title`         | `str`             | Yes      | Title of the article, or extracted/summarized from file                       |
+| `content`       | `str`             | Yes      | Full article content used for chunking and retrieval                          |
+| `fetched_at`    | `datetime`        | Yes      | Date and time when the article was ingested                                   |
+| `category`      | `Category`        | Yes      | unsorted, pro, perso                                                          |
+| `n_tags`        | `int`             | Yes      | Number of tags currently linked to the article                                |
+| `summary`       | `str \| None`     | No       | Short summary of the article                                                  |
+| `original_type` | `OriginalType \| None`     | No       | `text`(all text file like txt, md etc),`image`,`pdf`, None if it's not manuel added 
+
+#### `Tag`
+
+| Field | Type | Required | Notes                                  |
+|---|---|---|----------------------------------------|
+| `id` | `str` | Yes | Unique identifier for the tag          |
+| `name` | `str` | Yes | Tag name                               |
+| `created_at` | `datetime` | Yes | Date and time when the tag was created |
+
+#### `ArticleTag`
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `article_id` | `str` | Yes | Identifier of the linked article |
+| `tag_id` | `str` | Yes | Identifier of the linked tag |
+
+#### `Chunk`
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | `str` | Yes | Unique identifier for the chunk |
+| `article_id` | `str` | Yes | Identifier of the article the chunk comes from |
+| `text` | `str` | Yes | Text content of the chunk |
+| `position` | `int` | Yes | Relative position of the chunk within the article |
+
+### Relationships
+
+- `Source 1 -> N Article` via `Article.source_id`
+- `Article 1 -> N Chunk` via `Chunk.article_id`
+- `Article N -> N Tag` via `ArticleTag(article_id, tag_id)`
+- `Article.n_tags` is a denormalized counter derived from `ArticleTag`

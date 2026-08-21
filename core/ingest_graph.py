@@ -1,7 +1,7 @@
 from typing import TypedDict
 from adapters.embedder import embed
 from adapters.search import search
-from adapters.store import save_article, save_chunks, save_source
+from adapters.store import save_article, save_article_tags, save_chunks, save_source
 from config import CHUNK_OVERLAP, CHUNK_SIZE
 from core.models import Article, Chunk, Source
 from langgraph.graph import END, START, StateGraph
@@ -50,6 +50,7 @@ def store_node(state:IngestState) -> dict:
         save_source(src)
     for article in state["articles"]:
         save_article(article)
+        save_article_tags(article.id, [state["topic"]])
     save_chunks(state["chunks"],state["embeddings"])
     return {}
 

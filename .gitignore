@@ -8,3 +8,5 @@ __pycache__/
 *.pyc
 CLAUDE.md
 data/
+docs/*.mmd
+scripts/

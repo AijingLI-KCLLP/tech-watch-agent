@@ -20,18 +20,20 @@ CREATE TABLE IF NOT EXISTS sources (
     url               TEXT NOT NULL,
     type              TEXT NOT NULL,
     credibility_score REAL,
-    why_interest      TEXT
+    source_summary    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS articles (
     id          TEXT PRIMARY KEY,
     source_id   TEXT NOT NULL REFERENCES sources(id),
-    url         TEXT NOT NULL UNIQUE,
+    url         TEXT UNIQUE,
     title       TEXT NOT NULL,
     content     TEXT NOT NULL,
     fetched_at  TEXT NOT NULL,
     category    TEXT NOT NULL DEFAULT 'unsorted',
-    summary     TEXT
+    n_tags      INTEGER NOT NULL DEFAULT 0,
+    summary     TEXT,
+    original_type TEXT
 );
 
 CREATE TABLE IF NOT EXISTS tags (
@@ -66,56 +68,161 @@ def _db() -> Iterator[sqlite3.Connection]:
 def init_db() -> None:
     with _db() as conn:
         conn.executescript(SCHEMA)
+        source_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(sources)").fetchall()
+        }
+        if "source_summary" not in source_columns:
+            conn.execute(
+                "ALTER TABLE sources ADD COLUMN source_summary TEXT"
+            )
+        if "why_interest" in source_columns:
+            conn.execute(
+                """
+                UPDATE sources
+                SET source_summary = COALESCE(source_summary, why_interest)
+                WHERE why_interest IS NOT NULL
+                """
+            )
+        columns = {
+            row[1]: row for row in conn.execute("PRAGMA table_info(articles)").fetchall()
+        }
+        if "n_tags" not in columns:
+            conn.execute(
+                "ALTER TABLE articles ADD COLUMN n_tags INTEGER NOT NULL DEFAULT 0"
+            )
+        if "original_type" not in columns:
+            conn.execute(
+                "ALTER TABLE articles ADD COLUMN original_type TEXT"
+            )
+        # Rebuild the table if url is still NOT NULL so Article.url can be optional.
+        if columns.get("url", (None, None, None, None, 1))[3]:
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("ALTER TABLE article_tag RENAME TO article_tag_old")
+            conn.execute("ALTER TABLE articles RENAME TO articles_old")
+            conn.execute(
+                """
+                CREATE TABLE articles (
+                    id            TEXT PRIMARY KEY,
+                    source_id     TEXT NOT NULL REFERENCES sources(id),
+                    url           TEXT UNIQUE,
+                    title         TEXT NOT NULL,
+                    content       TEXT NOT NULL,
+                    fetched_at    TEXT NOT NULL,
+                    category      TEXT NOT NULL DEFAULT 'unsorted',
+                    n_tags        INTEGER NOT NULL DEFAULT 0,
+                    summary       TEXT,
+                    original_type TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE article_tag (
+                    article_id TEXT NOT NULL REFERENCES articles(id),
+                    tag_id     TEXT NOT NULL REFERENCES tags(id),
+                    PRIMARY KEY (article_id, tag_id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO articles (
+                    id, source_id, url, title, content, fetched_at, category, n_tags, summary, original_type
+                )
+                SELECT
+                    id,
+                    source_id,
+                    url,
+                    title,
+                    content,
+                    fetched_at,
+                    category,
+                    COALESCE(n_tags, 0),
+                    summary,
+                    original_type
+                FROM articles_old
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO article_tag (article_id, tag_id)
+                SELECT article_id, tag_id
+                FROM article_tag_old
+                """
+            )
+            conn.execute("DROP TABLE article_tag_old")
+            conn.execute("DROP TABLE articles_old")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_article_source ON articles(source_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_article_tag_tag ON article_tag(tag_id)"
+            )
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
 
 def save_source(source: Source) -> None:
     with _db() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO sources (id, name, url, type, credibility_score, why_interest) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO sources (id, name, url, type, credibility_score, source_summary) VALUES (?, ?, ?, ?, ?, ?)",
             (
                 source.id,
                 source.name,
                 str(source.url),
                 source.type.value,
                 source.credibility_score,
-                source.why_interest,
+                source.source_summary,
             ),
         )
 
 def save_article(article: Article) -> None:
     with _db() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO articles (id, source_id, url, title, content, fetched_at, category, summary) VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT OR IGNORE INTO articles (id, source_id, url, title, content, fetched_at, category, n_tags, summary, original_type) VALUES(?,?,?,?,?,?,?,?,?,?)",
             (
                 article.id,
                 article.source_id,
-                str(article.url),
+                str(article.url) if article.url is not None else None,
                 article.title,
                 article.content,
                 article.fetched_at.isoformat(),
                 article.category.value,
+                article.n_tags,
                 article.summary,
+                article.original_type.value if article.original_type is not None else None,
             ),
         )
 
-        for tag in article.tags:
+def save_article_tags(article_id: str, tags: list[str]) -> None:
+    unique_tags = list(dict.fromkeys(tags))
+    with _db() as conn:
+        for tag in unique_tags:
             row = conn.execute("SELECT id FROM tags WHERE name = ?", (tag,)).fetchone()
             if row :
                 tag_id = row[0]
             else:
                 new_tag = Tag(name=tag)
-                conn.execute("INSERT INTO tags (id, name, created_at) VALUES(?,?,?)",
-                             (new_tag.id,new_tag.name,new_tag.created_at.isoformat()),
-                             )
+                conn.execute(
+                    "INSERT INTO tags (id, name, created_at) VALUES(?,?,?)",
+                    (new_tag.id,new_tag.name,new_tag.created_at.isoformat()),
+                )
                 tag_id = new_tag.id
             conn.execute(
-                "INSERT OR IGNORE INTO article_tag (article_id, tag_id) VALUES(?, ?)",(article.id, tag_id))
+                "INSERT OR IGNORE INTO article_tag (article_id, tag_id) VALUES(?, ?)",
+                (article_id, tag_id),
+            )
+        conn.execute(
+            "UPDATE articles SET n_tags = ? WHERE id = ?",
+            (len(unique_tags), article_id),
+        )
 
 
 def get_article(article_id: str) -> dict | None:
     with _db() as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT id, url, title FROM articles WHERE id = ?", (article_id,)
+            "SELECT id, url, title, n_tags FROM articles WHERE id = ?", (article_id,)
         ).fetchone()
         return dict(row) if row else None
 
