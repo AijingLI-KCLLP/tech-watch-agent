@@ -11,15 +11,54 @@ Two independent LangGraph pipelines:
 ![docs/diagrams/agent_workflow.png](docs/diagrams/agent_workflow.png)
 
 ```mermaid
-flowchart LR
-    subgraph Ingest["watch <topic>"]
-        A[search] --> B[chunk] --> C[embed] --> D[store]
-    end
-    subgraph Retrieve["ask <question>"]
-        E[embed_query] --> F[retrieve] --> G[generate]
-    end
-    D -.persists.-> H[(SQLite + ChromaDB)]
-    H -.reads.-> F
+ flowchart LR
+      subgraph Ingest["Ingest"]
+  
+          A[watch topic] --> B[search web]
+          C[add Article by url] --> D[fetch direct content]
+          C --> E1[if anti crawler, ask for manual file input] --> E
+          E[add file] --> F[transcribe / normalize]
+          E2[add file] --> F
+                  %% force left alignment
+        A ~~~ C
+        C ~~~ E
+        E ~~~ F
+        F ~~~ E2
+      end
+
+      B --> G[qualify]
+      D --> G
+      F --> G
+
+      G --> H[tag]
+      H --> I[categorize]
+      I --> J[chunk]
+      J --> K[embed]
+      K --> L[store]
+
+      subgraph Retrieve["Retrieve"]
+          M[ask <question>] --> N[embed_query]
+          N --> O[retrieve]
+          O --> P[generate answer]
+      end
+
+      subgraph Publish["Republish"]
+          Q[select articles] --> R[summarize]
+          R --> S[add personal angle]
+          S --> T[generate post / note]
+          T --> U[manual edit]
+      end
+
+      L -. persists .-> V[(SQLite + ChromaDB)]
+      V -. reads .-> O
+      V -. feeds .-> Q
+
+      subgraph AddFile["Add file, better input with source"]
+          X[pdf] --> Y[extract text] --> Z[find source if not provided in input by file or search web] --> W[add Source if not exist] --> D1[Add Article whose content only text ]
+          A1[image] --> B1[OCR or/and summarize photo] --> Z --> W --> D1
+          C1[text] --> Z --> W --> D1
+      end
+
 ```
 
 - **Ingest** (`watch`): Tavily search → chunk text → embed chunks → write to SQLite (articles) + ChromaDB (vectors).

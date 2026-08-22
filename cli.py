@@ -1,24 +1,18 @@
 import argparse
 
-from adapters.store import init_db
-from core.ingest_graph import build_ingest_graph
-from core.retrieve_graph import build_retrieve_graph
+from services.agent_service import ask_question, watch_topic
 
 
 def cmd_watch(topic: str) -> None:
-    init_db()
-    graph = build_ingest_graph()
-    final = graph.invoke({"topic": topic})
+    result = watch_topic(topic)
     print(
-        f"Ingested {len(final['articles'])} articles "
-        f"({len(final['chunks'])} chunks) for topic: {topic!r}"
+        f"Ingested {result['article_count']} articles "
+        f"({result['chunk_count']} chunks for topic: {result['topic']}!r)"
     )
 
-
 def cmd_ask(question: str) -> None:
-    graph = build_retrieve_graph()
-    final = graph.invoke({"question": question})
-    print(final["answer"])
+    result = ask_question(question)
+    print(result["answer"])
 
 
 def main() -> None:

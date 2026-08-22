@@ -45,14 +45,31 @@ def embed_node(state:IngestState) -> dict:
     vectors = embed([c.text for c in state["chunks"]])
     return {"embeddings":vectors}
 
-def store_node(state:IngestState) -> dict:
+
+def store_node(state: IngestState) -> dict:
     for src in state["sources"]:
         save_source(src)
+
+    article_id_map: dict[str, str] = {}
     for article in state["articles"]:
-        save_article(article)
-        save_article_tags(article.id, [state["topic"]])
-    save_chunks(state["chunks"],state["embeddings"])
+        persisted_article_id = save_article(article)
+        article_id_map[article.id] = persisted_article_id
+        save_article_tags(persisted_article_id, [state["topic"]])
+
+    persisted_chunks: list[Chunk] = []
+    for chunk in state["chunks"]:
+        persisted_chunks.append(
+            Chunk(
+                id=chunk.id,
+                article_id=article_id_map[chunk.article_id],
+                text=chunk.text,
+                position=chunk.position,
+            )
+        )
+
+    save_chunks(persisted_chunks, state["embeddings"])
     return {}
+
 
 def build_ingest_graph():
     g = StateGraph(IngestState)

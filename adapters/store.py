@@ -14,43 +14,97 @@ from core.models import Article, Chunk, Source, Tag
 # SQLite
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS sources (
-    id                TEXT PRIMARY KEY,
-    name              TEXT NOT NULL,
-    url               TEXT NOT NULL,
-    type              TEXT NOT NULL,
-    credibility_score REAL,
-    source_summary    TEXT
-);
+         CREATE TABLE IF NOT EXISTS sources
+         (
+             id
+             TEXT
+             PRIMARY
+             KEY,
+             name
+             TEXT
+             NOT
+             NULL,
+             url
+             TEXT
+             NOT
+             NULL,
+             type
+             TEXT
+             NOT
+             NULL,
+             credibility_score
+             REAL,
+             source_summary
+             TEXT
+         );
 
-CREATE TABLE IF NOT EXISTS articles (
-    id          TEXT PRIMARY KEY,
-    source_id   TEXT NOT NULL REFERENCES sources(id),
-    url         TEXT UNIQUE,
-    title       TEXT NOT NULL,
-    content     TEXT NOT NULL,
-    fetched_at  TEXT NOT NULL,
-    category    TEXT NOT NULL DEFAULT 'unsorted',
-    n_tags      INTEGER NOT NULL DEFAULT 0,
-    summary     TEXT,
-    original_type TEXT
-);
+         CREATE TABLE IF NOT EXISTS articles
+         (
+             id
+             TEXT
+             PRIMARY
+             KEY,
+             source_id
+             TEXT
+             NOT
+             NULL
+             REFERENCES
+             sources
+         (
+             id
+         ),
+             url TEXT UNIQUE,
+             title TEXT NOT NULL,
+             content TEXT NOT NULL,
+             fetched_at TEXT NOT NULL,
+             category TEXT NOT NULL DEFAULT 'unsorted',
+             n_tags INTEGER NOT NULL DEFAULT 0,
+             summary TEXT,
+             original_type TEXT
+             );
 
-CREATE TABLE IF NOT EXISTS tags (
-    id         TEXT PRIMARY KEY,
-    name       TEXT NOT NULL UNIQUE,
-    created_at TEXT NOT NULL
-);
+         CREATE TABLE IF NOT EXISTS tags
+         (
+             id
+             TEXT
+             PRIMARY
+             KEY,
+             name
+             TEXT
+             NOT
+             NULL
+             UNIQUE,
+             created_at
+             TEXT
+             NOT
+             NULL
+         );
 
-CREATE TABLE IF NOT EXISTS article_tag (
-    article_id TEXT NOT NULL REFERENCES articles(id),
-    tag_id     TEXT NOT NULL REFERENCES tags(id),
-    PRIMARY KEY (article_id, tag_id)
-);
+         CREATE TABLE IF NOT EXISTS article_tag
+         (
+             article_id
+             TEXT
+             NOT
+             NULL
+             REFERENCES
+             articles
+         (
+             id
+         ),
+             tag_id TEXT NOT NULL REFERENCES tags
+         (
+             id
+         ),
+             PRIMARY KEY
+         (
+             article_id,
+             tag_id
+         )
+             );
 
-CREATE INDEX IF NOT EXISTS idx_article_source ON articles(source_id);
-CREATE INDEX IF NOT EXISTS idx_article_tag_tag ON article_tag(tag_id);
-"""
+         CREATE INDEX IF NOT EXISTS idx_article_source ON articles(source_id);
+         CREATE INDEX IF NOT EXISTS idx_article_tag_tag ON article_tag(tag_id); \
+         """
 
 
 @contextmanager
@@ -58,7 +112,7 @@ def _db() -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(SQLITE_PATH)
     conn.execute("PRAGMA foreign_keys = ON")
 
-    try :
+    try:
         yield conn
         conn.commit()
     finally:
@@ -102,14 +156,15 @@ def init_db() -> None:
             conn.execute("ALTER TABLE articles RENAME TO articles_old")
             conn.execute(
                 """
-                CREATE TABLE articles (
+                CREATE TABLE articles
+                (
                     id            TEXT PRIMARY KEY,
-                    source_id     TEXT NOT NULL REFERENCES sources(id),
+                    source_id     TEXT    NOT NULL REFERENCES sources (id),
                     url           TEXT UNIQUE,
-                    title         TEXT NOT NULL,
-                    content       TEXT NOT NULL,
-                    fetched_at    TEXT NOT NULL,
-                    category      TEXT NOT NULL DEFAULT 'unsorted',
+                    title         TEXT    NOT NULL,
+                    content       TEXT    NOT NULL,
+                    fetched_at    TEXT    NOT NULL,
+                    category      TEXT    NOT NULL DEFAULT 'unsorted',
                     n_tags        INTEGER NOT NULL DEFAULT 0,
                     summary       TEXT,
                     original_type TEXT
@@ -118,29 +173,28 @@ def init_db() -> None:
             )
             conn.execute(
                 """
-                CREATE TABLE article_tag (
-                    article_id TEXT NOT NULL REFERENCES articles(id),
-                    tag_id     TEXT NOT NULL REFERENCES tags(id),
+                CREATE TABLE article_tag
+                (
+                    article_id TEXT NOT NULL REFERENCES articles (id),
+                    tag_id     TEXT NOT NULL REFERENCES tags (id),
                     PRIMARY KEY (article_id, tag_id)
                 )
                 """
             )
             conn.execute(
                 """
-                INSERT INTO articles (
-                    id, source_id, url, title, content, fetched_at, category, n_tags, summary, original_type
-                )
-                SELECT
-                    id,
-                    source_id,
-                    url,
-                    title,
-                    content,
-                    fetched_at,
-                    category,
-                    COALESCE(n_tags, 0),
-                    summary,
-                    original_type
+                INSERT INTO articles (id, source_id, url, title, content, fetched_at, category, n_tags, summary,
+                                      original_type)
+                SELECT id,
+                       source_id,
+                       url,
+                       title,
+                       content,
+                       fetched_at,
+                       category,
+                       COALESCE(n_tags, 0),
+                       summary,
+                       original_type
                 FROM articles_old
                 """
             )
@@ -162,6 +216,7 @@ def init_db() -> None:
             conn.commit()
             conn.execute("PRAGMA foreign_keys = ON")
 
+
 def save_source(source: Source) -> None:
     with _db() as conn:
         conn.execute(
@@ -176,14 +231,37 @@ def save_source(source: Source) -> None:
             ),
         )
 
-def save_article(article: Article) -> None:
+
+def save_article(article: Article) -> str:
+    article_url = str(article.url) if article.url is not None else None
+
     with _db() as conn:
+        if article_url is not None:
+            row = conn.execute(
+                "SELECT id FROM articles WHERE url = ?",
+                (article_url,),
+            ).fetchone()
+            if row:
+                return row[0]
+
         conn.execute(
-            "INSERT OR IGNORE INTO articles (id, source_id, url, title, content, fetched_at, category, n_tags, summary, original_type) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            """
+            INSERT INTO articles (id,
+                                  source_id,
+                                  url,
+                                  title,
+                                  content,
+                                  fetched_at,
+                                  category,
+                                  n_tags,
+                                  summary,
+                                  original_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
             (
                 article.id,
                 article.source_id,
-                str(article.url) if article.url is not None else None,
+                article_url,
                 article.title,
                 article.content,
                 article.fetched_at.isoformat(),
@@ -194,18 +272,21 @@ def save_article(article: Article) -> None:
             ),
         )
 
+        return article.id
+
+
 def save_article_tags(article_id: str, tags: list[str]) -> None:
     unique_tags = list(dict.fromkeys(tags))
     with _db() as conn:
         for tag in unique_tags:
             row = conn.execute("SELECT id FROM tags WHERE name = ?", (tag,)).fetchone()
-            if row :
+            if row:
                 tag_id = row[0]
             else:
                 new_tag = Tag(name=tag)
                 conn.execute(
                     "INSERT INTO tags (id, name, created_at) VALUES(?,?,?)",
-                    (new_tag.id,new_tag.name,new_tag.created_at.isoformat()),
+                    (new_tag.id, new_tag.name, new_tag.created_at.isoformat()),
                 )
                 tag_id = new_tag.id
             conn.execute(
@@ -230,16 +311,18 @@ def get_article(article_id: str) -> dict | None:
 # Chroma
 _chroma_client: chromadb.PersistentClient | None = None
 
+
 def _chroma() -> chromadb.Collection:
     global _chroma_client
     if _chroma_client is None:
         _chroma_client = chromadb.PersistentClient(path=str(CHROMA_PATH))
     return _chroma_client.get_or_create_collection(
         name=CHROMA_COLLECTION,
-        metadata={"hnsw:space":"cosine"},
+        metadata={"hnsw:space": "cosine"},
     )
 
-def save_chunks(chunks: list[Chunk], embeddings:list[list[float]]) -> None:
+
+def save_chunks(chunks: list[Chunk], embeddings: list[list[float]]) -> None:
     if not chunks:
         return
     col = _chroma()
@@ -249,11 +332,12 @@ def save_chunks(chunks: list[Chunk], embeddings:list[list[float]]) -> None:
         documents=[c.text for c in chunks],
         metadatas=[
             {
-                "article_id":c.article_id,
-                "position":c.position
+                "article_id": c.article_id,
+                "position": c.position
             } for c in chunks
         ],
     )
+
 
 def query_chunks(query_embedding: list[float], top_k: int) -> list[dict]:
     col = _chroma()
@@ -263,7 +347,7 @@ def query_chunks(query_embedding: list[float], top_k: int) -> list[dict]:
     )
     out = []
     for text, meta, dist in zip(
-        res["documents"][0], res["metadatas"][0], res["distances"][0]
+            res["documents"][0], res["metadatas"][0], res["distances"][0]
     ):
         out.append({
             "text": text,
