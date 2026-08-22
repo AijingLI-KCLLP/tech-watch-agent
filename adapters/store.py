@@ -308,6 +308,29 @@ def get_article(article_id: str) -> dict | None:
         return dict(row) if row else None
 
 
+def list_articles(limit: int = 50) -> list[dict]:
+    """Return the newest articles with the fields needed by the web list."""
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT a.id,
+                   a.title,
+                   a.url,
+                   a.fetched_at,
+                   a.category,
+                   a.n_tags,
+                   s.name AS source_name
+            FROM articles AS a
+            LEFT JOIN sources AS s ON s.id = a.source_id
+            ORDER BY a.fetched_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
 # Chroma
 _chroma_client: chromadb.PersistentClient | None = None
 

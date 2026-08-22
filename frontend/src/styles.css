@@ -1,0 +1,383 @@
+:root {
+  --paper: #f4f0e6;
+  --paper-deep: #e7ddcb;
+  --ink: #1d1b18;
+  --muted: #746e65;
+  --line: #c9bdab;
+  --accent: #d85b42;
+  --accent-dark: #a53e2d;
+  --sky: #c9e6e6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 90% 5%, rgba(201, 230, 230, 0.65), transparent 22rem),
+    linear-gradient(135deg, transparent 0 48%, rgba(216, 91, 66, 0.07) 48% 49%, transparent 49%),
+    var(--paper);
+  font-family: "DM Mono", monospace;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.shell {
+  width: min(1120px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 3rem 0 5rem;
+}
+
+.masthead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem 2rem;
+  align-items: end;
+  padding-bottom: 2.5rem;
+  border-bottom: 1px solid var(--ink);
+}
+
+.wordmark,
+h1,
+h2 {
+  font-family: "Newsreader", Georgia, serif;
+  font-weight: 600;
+}
+
+.wordmark {
+  color: inherit;
+  font-size: clamp(2.4rem, 7vw, 5.6rem);
+  line-height: 0.82;
+  letter-spacing: -0.075em;
+  text-decoration: none;
+}
+
+.eyebrow,
+.section-number,
+.count,
+.status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  line-height: 1.4;
+}
+
+.intro {
+  grid-column: 1 / -1;
+  max-width: 30rem;
+  margin: 0.8rem 0 0;
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 1.35rem;
+}
+
+.watch-panel,
+.library-panel,
+.ask-panel {
+  border-bottom: 1px solid var(--line);
+}
+
+.watch-panel {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.8fr) minmax(19rem, 1.2fr);
+  gap: 2rem;
+  padding: 3rem 0;
+}
+
+h1,
+h2 {
+  margin: 0.25rem 0 0;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  letter-spacing: -0.05em;
+  line-height: 0.95;
+}
+
+.watch-form label {
+  display: block;
+  margin-bottom: 0.65rem;
+  font-size: 0.75rem;
+}
+
+.input-row {
+  display: flex;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.55);
+  outline: none;
+}
+
+input {
+  min-width: 0;
+  padding: 0.9rem 1rem;
+}
+
+textarea {
+  resize: vertical;
+  padding: 0.7rem;
+}
+
+input:focus,
+textarea:focus {
+  outline: 3px solid rgba(216, 91, 66, 0.35);
+  outline-offset: 2px;
+}
+
+button {
+  border: 1px solid var(--ink);
+  color: var(--paper);
+  background: var(--ink);
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-dark);
+  transform: translateY(-2px);
+}
+
+.input-row button {
+  padding: 0 1.1rem;
+}
+
+.status {
+  min-height: 1.4em;
+  margin-top: 0.75rem;
+}
+
+.library-panel,
+.ask-panel {
+  padding: 3rem 0;
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 1rem;
+  margin-bottom: 1.3rem;
+}
+
+.article-list {
+  border-top: 1px solid var(--ink);
+}
+
+.article-row,
+.empty-state {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.article-title {
+  color: inherit;
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 1.3rem;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+}
+
+.article-meta {
+  color: var(--muted);
+  font-size: 0.67rem;
+  letter-spacing: 0.04em;
+  text-align: right;
+}
+
+.empty-state {
+  display: block;
+  color: var(--muted);
+}
+
+.ask-panel {
+  display: block;
+}
+
+.ask-copy > p:last-child {
+  max-width: 34rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.chat-stage {
+  position: relative;
+  width: min(100%, 66rem);
+  aspect-ratio: 1.44;
+  margin-top: 2rem;
+}
+
+.chatbox-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.chat-content {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  top: 15%;
+  left: 10.5%;
+  width: 39%;
+  height: 70%;
+  padding: 0.7rem 0.9rem;
+}
+
+.answer {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  font-family: "Newsreader", Georgia, serif;
+  font-size: clamp(0.8rem, 1.45vw, 1.15rem);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.answer p {
+  margin: 0;
+}
+
+.ask-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.65rem;
+}
+
+.ask-form button {
+  padding: 0 0.7rem;
+}
+
+.ask-form textarea {
+  min-height: 4rem;
+  max-height: 5.5rem;
+  font-size: clamp(0.66rem, 1vw, 0.82rem);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 700px) {
+  .shell {
+    width: min(100% - 1.25rem, 1120px);
+    padding-top: 1.5rem;
+  }
+
+  .masthead,
+  .watch-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .masthead {
+    gap: 0.75rem;
+  }
+
+  .eyebrow {
+    grid-column: 1 / -1;
+  }
+
+  .watch-panel,
+  .library-panel,
+  .ask-panel {
+    padding: 2rem 0;
+  }
+
+  .chat-stage {
+    width: 100%;
+  }
+
+  .chat-content {
+    padding: 0.45rem 0.55rem;
+  }
+
+  .answer {
+    font-size: clamp(0.64rem, 2.2vw, 0.95rem);
+  }
+
+  .ask-form {
+    gap: 0.3rem;
+  }
+
+  .ask-form textarea {
+    min-height: 3.1rem;
+    max-height: 4rem;
+    padding: 0.4rem;
+    font-size: 0.58rem;
+  }
+
+  .ask-form button {
+    padding: 0 0.45rem;
+    font-size: 0.6rem;
+  }
+}
+
+@media (max-width: 440px) {
+  .input-row,
+  .ask-form {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .input-row button,
+  .ask-form button {
+    min-height: 2.8rem;
+    padding: 0.5rem 1rem;
+  }
+
+  .article-row {
+    grid-template-columns: 1fr;
+  }
+
+  .article-meta {
+    text-align: left;
+  }
+
+  .chat-content {
+    top: 14%;
+    left: 10%;
+    width: 40%;
+    height: 72%;
+  }
+}

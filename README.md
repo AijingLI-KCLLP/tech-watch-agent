@@ -96,9 +96,9 @@ Two independent LangGraph pipelines:
 
 ## Usage
 
-### Use API
+### Run the local API backend
 
-The future web UI calls the FastAPI backend. Start it in a terminal and leave it running while developing the web app:
+Start the FastAPI backend in one terminal:
 
 ```bash
 python -m uvicorn api:app --reload
@@ -112,8 +112,23 @@ The API is available at:
 - `http://127.0.0.1:8000/docs` - interactive Swagger UI.
 - `POST /watch` - runs `watch topic -> search web -> chunk -> embed -> store`.
 - `POST /ask` - runs `ask <question> -> embed_query -> retrieve -> generate answer`.
+- `GET /articles` - lists saved articles for the web app.
 
 The CLI calls the shared services directly, so it does not require Uvicorn to be running.
+
+### Run the React web app
+
+In a second terminal, start the Vite development server:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the URL printed by Vite, normally `http://127.0.0.1:5173/`. Vite proxies `/watch`, `/ask`, and `/articles` to FastAPI on port 8000, so both terminals must be running.
+
+The old FastAPI-served `web/` frontend remains in the repository temporarily; the active development frontend is `frontend/`.
 
 ### Use the CLI
 
@@ -170,6 +185,14 @@ tech_watch_agent/
 ├── config.py              # paths, model names, chunk size, top_k
 ├── services/
 │   └── agent_service.py   # shared watch_topic / ask_question entry points
+├── frontend/              # Vite + React development frontend
+│   ├── public/assets/     # chat-box artwork
+│   └── src/               # React components and styles
+├── web/                   # light-themed frontend served by FastAPI
+│   ├── index.html
+│   ├── styles.css
+│   ├── app.js
+│   └── assets/chatbox.png # provided chat-box artwork
 ├── core/
 │   ├── models.py          # Source / Article / Tag / ArticleTag / Chunk
 │   ├── ingest_graph.py    # search → chunk → embed → store
