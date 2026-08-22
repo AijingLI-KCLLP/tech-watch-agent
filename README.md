@@ -74,6 +74,7 @@ Two independent LangGraph pipelines:
 | Search | Tavily |
 | Vectors | ChromaDB |
 | Relational | SQLite |
+| API | FastAPI + Uvicorn |
 
 
 ## Install & Setup
@@ -94,6 +95,27 @@ Two independent LangGraph pipelines:
    ```
 
 ## Usage
+
+### Use API
+
+The future web UI calls the FastAPI backend. Start it in a terminal and leave it running while developing the web app:
+
+```bash
+python -m uvicorn api:app --reload
+```
+
+`api:app` means: load the `app` FastAPI object from `api.py`. `--reload` restarts the server after Python file changes; use it for local development only.
+
+The API is available at:
+
+- `http://127.0.0.1:8000/health` - server health check.
+- `http://127.0.0.1:8000/docs` - interactive Swagger UI.
+- `POST /watch` - runs `watch topic -> search web -> chunk -> embed -> store`.
+- `POST /ask` - runs `ask <question> -> embed_query -> retrieve -> generate answer`.
+
+The CLI calls the shared services directly, so it does not require Uvicorn to be running.
+
+### Use the CLI
 
 Ingest articles on a topic:
 ```bash
@@ -135,7 +157,7 @@ No relevant context found. Run `watch <topic>` first.
 - Manual tag editing.
 - Capture pipelines (web form, bot, dictaphone).
 - Value-added republishing.
-- FastAPI web UI on top of the same two graphs.
+- Web UI on top of the FastAPI endpoints.
 
 The data model already reserves the fields for the September features — no rewrite needed, only additive nodes/agents.
 
@@ -143,8 +165,11 @@ The data model already reserves the fields for the September features — no rew
 
 ```
 tech_watch_agent/
+├── api.py                 # FastAPI HTTP entry point
 ├── cli.py                 # entry point
 ├── config.py              # paths, model names, chunk size, top_k
+├── services/
+│   └── agent_service.py   # shared watch_topic / ask_question entry points
 ├── core/
 │   ├── models.py          # Source / Article / Tag / ArticleTag / Chunk
 │   ├── ingest_graph.py    # search → chunk → embed → store
