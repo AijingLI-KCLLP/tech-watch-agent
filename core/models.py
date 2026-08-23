@@ -29,6 +29,13 @@ class OriginalType(str, Enum):
     IMAGE = "image"
     PDF = "pdf"
 
+
+class SourceVerificationStatus(str, Enum):
+    VERIFIED = "verified"
+    PLAUSIBLE = "plausible"
+    UNVERIFIED = "unverified"
+    MISMATCH = "mismatch"
+
 class Source(BaseModel):
     id:str = Field(default_factory=_uid)
     name:str
@@ -41,7 +48,7 @@ class Source(BaseModel):
 
 class Article(BaseModel):
     id:str = Field(default_factory=_uid)
-    source_id:str
+    source_id: str | None = None
     url:HttpUrl | None = None
     title:str
     content:str
@@ -52,6 +59,28 @@ class Article(BaseModel):
     n_tags:int = 0
     summary:str | None = None
     original_type:OriginalType | None = None
+
+
+class InputAsset(BaseModel):
+    """The raw user input and its extraction provenance before Article normalization."""
+
+    id: str = Field(default_factory=_uid)
+    article_id: str | None = None
+    original_type: OriginalType
+    mime_type: str
+    input_filename: str | None = None
+    storage_path: str | None = None
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    raw_text: str | None = None
+    extracted_text: str | None = None
+    provided_source_url: HttpUrl | None = None
+    source_verification_status: SourceVerificationStatus = (
+        SourceVerificationStatus.UNVERIFIED
+    )
+    source_verification_reason: str | None = None
+    source_verification_confidence: float | None = Field(default=None, ge=0, le=1)
+    verified_source_id: str | None = None
+    created_at: datetime = Field(default_factory=_now)
 
 class Tag(BaseModel):
     id:str = Field(default_factory=_uid)

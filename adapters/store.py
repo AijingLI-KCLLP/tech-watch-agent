@@ -9,7 +9,7 @@ from config import (
     SQLITE_PATH
 )
 
-from core.models import Article, Chunk, Source, Tag
+from core.models import Article, Chunk, InputAsset, Source, Tag
 
 # SQLite
 
@@ -44,15 +44,7 @@ SCHEMA = """
              TEXT
              PRIMARY
              KEY,
-             source_id
-             TEXT
-             NOT
-             NULL
-             REFERENCES
-             sources
-         (
-             id
-         ),
+             source_id TEXT REFERENCES sources (id),
              url TEXT UNIQUE,
              title TEXT NOT NULL,
              content TEXT NOT NULL,
@@ -106,6 +98,39 @@ SCHEMA = """
          CREATE INDEX IF NOT EXISTS idx_article_tag_tag ON article_tag(tag_id); \
          """
 
+INPUT_ASSET_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS input_assets
+    (
+        id                              TEXT PRIMARY KEY,
+        article_id                      TEXT REFERENCES articles (id) ON DELETE CASCADE,
+        original_type                   TEXT NOT NULL,
+        mime_type                       TEXT NOT NULL,
+        input_filename                  TEXT,
+        storage_path                    TEXT,
+        sha256                          TEXT NOT NULL,
+        raw_text                        TEXT,
+        extracted_text                  TEXT,
+        provided_source_url             TEXT,
+        source_verification_status      TEXT NOT NULL DEFAULT 'unverified'
+                                        CHECK (source_verification_status IN (
+                                            'verified', 'plausible', 'unverified', 'mismatch'
+                                        )),
+        source_verification_reason      TEXT,
+        source_verification_confidence  REAL
+                                        CHECK (
+                                            source_verification_confidence IS NULL OR
+                                            (source_verification_confidence >= 0 AND
+                                             source_verification_confidence <= 1)
+                                        ),
+        verified_source_id              TEXT REFERENCES sources (id) ON DELETE SET NULL,
+        created_at                      TEXT NOT NULL,
+        CHECK (verified_source_id IS NULL OR source_verification_status = 'verified')
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_input_asset_article ON input_assets(article_id);
+    CREATE INDEX IF NOT EXISTS idx_input_asset_sha256 ON input_assets(sha256);
+"""
+
 
 @contextmanager
 def _db() -> Iterator[sqlite3.Connection]:
@@ -148,8 +173,12 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE articles ADD COLUMN original_type TEXT"
             )
-        # Rebuild the table if url is still NOT NULL so Article.url can be optional.
-        if columns.get("url", (None, None, None, None, 1))[3]:
+        # Rebuild old article tables so both the URL and Source are optional.
+        needs_article_rebuild = (
+            columns.get("url", (None, None, None, None, 1))[3]
+            or columns.get("source_id", (None, None, None, None, 1))[3]
+        )
+        if needs_article_rebuild:
             conn.commit()
             conn.execute("PRAGMA foreign_keys = OFF")
             conn.execute("ALTER TABLE article_tag RENAME TO article_tag_old")
@@ -159,7 +188,7 @@ def init_db() -> None:
                 CREATE TABLE articles
                 (
                     id            TEXT PRIMARY KEY,
-                    source_id     TEXT    NOT NULL REFERENCES sources (id),
+                    source_id     TEXT REFERENCES sources (id),
                     url           TEXT UNIQUE,
                     title         TEXT    NOT NULL,
                     content       TEXT    NOT NULL,
@@ -215,6 +244,8 @@ def init_db() -> None:
             )
             conn.commit()
             conn.execute("PRAGMA foreign_keys = ON")
+
+        conn.executescript(INPUT_ASSET_SCHEMA)
 
 
 def save_source(source: Source) -> None:
@@ -273,6 +304,81 @@ def save_article(article: Article) -> str:
         )
 
         return article.id
+
+
+def save_input_asset(asset: InputAsset) -> None:
+    """Persist raw-input provenance before or after it is linked to an Article."""
+    with _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO input_assets (
+                id,
+                article_id,
+                original_type,
+                mime_type,
+                input_filename,
+                storage_path,
+                sha256,
+                raw_text,
+                extracted_text,
+                provided_source_url,
+                source_verification_status,
+                source_verification_reason,
+                source_verification_confidence,
+                verified_source_id,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                asset.id,
+                asset.article_id,
+                asset.original_type.value,
+                asset.mime_type,
+                asset.input_filename,
+                asset.storage_path,
+                asset.sha256,
+                asset.raw_text,
+                asset.extracted_text,
+                str(asset.provided_source_url)
+                if asset.provided_source_url is not None
+                else None,
+                asset.source_verification_status.value,
+                asset.source_verification_reason,
+                asset.source_verification_confidence,
+                asset.verified_source_id,
+                asset.created_at.isoformat(),
+            ),
+        )
+
+
+def list_input_assets(article_id: str) -> list[dict]:
+    """Return raw-input provenance for an Article review screen."""
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT id,
+                   article_id,
+                   original_type,
+                   mime_type,
+                   input_filename,
+                   storage_path,
+                   sha256,
+                   raw_text,
+                   extracted_text,
+                   provided_source_url,
+                   source_verification_status,
+                   source_verification_reason,
+                   source_verification_confidence,
+                   verified_source_id,
+                   created_at
+            FROM input_assets
+            WHERE article_id = ?
+            ORDER BY created_at ASC
+            """,
+            (article_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def save_article_tags(article_id: str, tags: list[str]) -> None:
@@ -361,7 +467,7 @@ def get_article_detail(article_id: str) -> dict | None:
                    s.credibility_score,
                    s.source_summary
             FROM articles AS a
-            JOIN sources AS s ON s.id = a.source_id
+            LEFT JOIN sources AS s ON s.id = a.source_id
             WHERE a.id = ?
             """,
             (article_id,),
@@ -380,6 +486,17 @@ def get_article_detail(article_id: str) -> dict | None:
             (article_id,),
         ).fetchall()
 
+        source = None
+        if row["source_id"] is not None:
+            source = {
+                "id": row["source_id"],
+                "name": row["source_name"],
+                "url": row["source_url"],
+                "type": row["source_type"],
+                "credibility_score": row["credibility_score"],
+                "source_summary": row["source_summary"],
+            }
+
         return {
             "id": row["id"],
             "title": row["title"],
@@ -390,15 +507,9 @@ def get_article_detail(article_id: str) -> dict | None:
             "n_tags": row["n_tags"],
             "summary": row["summary"],
             "original_type": row["original_type"],
-            "source": {
-                "id": row["source_id"],
-                "name": row["source_name"],
-                "url": row["source_url"],
-                "type": row["source_type"],
-                "credibility_score": row["credibility_score"],
-                "source_summary": row["source_summary"],
-            },
+            "source": source,
             "tags": [tag["name"] for tag in tags],
+            "input_assets": list_input_assets(article_id),
         }
 
 

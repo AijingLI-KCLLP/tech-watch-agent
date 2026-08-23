@@ -11,53 +11,57 @@ Two independent LangGraph pipelines:
 ![docs/diagrams/agent_workflow.png](docs/diagrams/agent_workflow.png)
 
 ```mermaid
- flowchart LR
-      subgraph Ingest["Ingest"]
-  
-          A[watch topic] --> B[search web]
-          C[add Article by url] --> D[fetch direct content]
-          C --> E1[if anti crawler, ask for manual file input] --> E
-          E[add file] --> F[transcribe / normalize]
-          E2[add file] --> F
-                  %% force left alignment
-        A ~~~ C
-        C ~~~ E
-        E ~~~ F
-        F ~~~ E2
-      end
+flowchart LR
+    subgraph Ingest["Ingest"]
+        A[watch topic] --> B[search web]
 
-      B --> G[qualify]
-      D --> G
-      F --> G
+        C[add content] --> D[paste text]
+        C --> E[add file]
+        C --> F[add by url]
 
-      G --> H[tag]
-      H --> I[categorize]
-      I --> J[chunk]
-      J --> K[embed]
-      K --> L[store]
+        D --> N[transcribe / normalize]
+        E --> G{file type}
+        G -- text --> N
+        G -- pdf --> H[extract text]
+        G -- image --> I[OCR]
+        H --> N
+        I --> N
 
-      subgraph Retrieve["Retrieve"]
-          M[ask <question>] --> N[embed_query]
-          N --> O[retrieve]
-          O --> P[generate answer]
-      end
+        F --> J[inspect content type]
+        J -- text/html --> K[fetch direct content]
+        J -- pdf --> H
+        J -- image --> I
+        K --> AL{content available?}
+        AL -- yes --> N
+        AL -- no / anti crawler --> L[ask for manual file input]
+        L --> E
+    end
 
-      subgraph Publish["Republish"]
-          Q[select articles] --> R[summarize]
-          R --> S[add personal angle]
-          S --> T[generate post / note]
-          T --> U[manual edit]
-      end
+    B --> O[qualify]
+    N --> O
 
-      L -. persists .-> V[(SQLite + ChromaDB)]
-      V -. reads .-> O
-      V -. feeds .-> Q
+    O --> P[tag]
+    P --> Q[categorize]
+    Q --> R[chunk]
+    R --> S[embed]
+    S --> T[store]
 
-      subgraph AddFile["Add file, better input with source"]
-          X[pdf] --> Y[extract text] --> Z[find source if not provided in input by file or search web] --> W[add Source if not exist] --> D1[Add Article whose content only text ]
-          A1[image] --> B1[OCR or/and summarize photo] --> Z --> W --> D1
-          C1[text] --> Z --> W --> D1
-      end
+    subgraph Retrieve["Retrieve"]
+        U[ask <question>] --> V[embed_query]
+        V --> W[retrieve]
+        W --> X[generate answer]
+    end
+
+    subgraph Publish["Republish"]
+        Y[select articles] --> Z[summarize]
+        Z --> AA[add personal angle]
+        AA --> AB[generate post / note]
+        AB --> AC[manual edit]
+    end
+
+    T -. persists .-> AD[(SQLite + ChromaDB)]
+    AD -. reads .-> W
+    AD -. feeds .-> Y
 
 ```
 
@@ -197,7 +201,7 @@ tech_watch_agent/
 │   ├── app.js
 │   └── assets/chatbox.png # provided chat-box artwork
 ├── core/
-│   ├── models.py          # Source / Article / Tag / ArticleTag / Chunk
+│   ├── models.py          # Source / Article / InputAsset / Tag / ArticleTag / Chunk
 │   ├── ingest_graph.py    # search → chunk → embed → store
 │   └── retrieve_graph.py  # embed_query → retrieve → generate
 ├── adapters/              # only layer talking to the outside world
@@ -215,6 +219,7 @@ tech_watch_agent/
 - `SourceType`: `blog`, `article`, `video`, `podcast`, `social`, `other`
 - `Category`: `unsorted`, `pro`, `perso`
 - `OriginalType`:`text`,`image`,`pdf`
+- `SourceVerificationStatus`: `verified`, `plausible`, `unverified`, `mismatch`
 
 ### Entities
 
@@ -234,7 +239,7 @@ tech_watch_agent/
 | Field           | Type              | Required | Notes                                                                         |
 |-----------------|-------------------|----------|-------------------------------------------------------------------------------|
 | `id`            | `str`             | Yes      | Unique identifier for the article                                             |
-| `source_id`     | `str`             | Yes      | Identifier of the source that published the article                           |
+| `source_id`     | `str \| None`    | No       | Verified source identifier, if available                                      |
 | `url`           | `HttpUrl \| None` | No       | Canonical URL of the article, could be none if input is file added without url |
 | `title`         | `str`             | Yes      | Title of the article, or extracted/summarized from file                       |
 | `content`       | `str`             | Yes      | Full article content used for chunking and retrieval                          |
@@ -243,6 +248,25 @@ tech_watch_agent/
 | `n_tags`        | `int`             | Yes      | Number of tags currently linked to the article                                |
 | `summary`       | `str \| None`     | No       | Short summary of the article                                                  |
 | `original_type` | `OriginalType \| None`     | No       | `text`(all text file like txt, md etc),`image`,`pdf`, None if it's not manuel added 
+
+#### `InputAsset`
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | `str` | Yes | Unique identifier for the submitted input |
+| `article_id` | `str \| None` | No | Article created from this input after normalization |
+| `original_type` | `OriginalType` | Yes | Input format: `text`, `pdf`, or `image` |
+| `mime_type` | `str` | Yes | Original MIME type, such as `application/pdf` |
+| `input_filename` | `str \| None` | No | Original uploaded filename |
+| `storage_path` | `str \| None` | No | Persistent path to the raw uploaded file |
+| `sha256` | `str` | Yes | Hash for duplicate detection and integrity checks |
+| `raw_text` | `str \| None` | No | Original pasted text before normalization |
+| `extracted_text` | `str \| None` | No | Text from extraction or OCR before normalization |
+| `provided_source_url` | `HttpUrl \| None` | No | Source URL claimed by the user |
+| `source_verification_status` | `SourceVerificationStatus` | Yes | `verified`, `plausible`, `unverified`, or `mismatch` |
+| `source_verification_reason` | `str \| None` | No | Explanation of the verification result |
+| `source_verification_confidence` | `float \| None` | No | Confidence between 0 and 1 |
+| `verified_source_id` | `str \| None` | No | Canonical Source id when verification succeeds |
 
 #### `Tag`
 
@@ -270,7 +294,8 @@ tech_watch_agent/
 
 ### Relationships
 
-- `Source 1 -> N Article` via `Article.source_id`
+- `Source 0..1 -> N Article` via `Article.source_id`
+- `Article 1 -> N InputAsset` via `InputAsset.article_id`
 - `Article 1 -> N Chunk` via `Chunk.article_id`
 - `Article N -> N Tag` via `ArticleTag(article_id, tag_id)`
 - `Article.n_tags` is a denormalized counter derived from `ArticleTag`

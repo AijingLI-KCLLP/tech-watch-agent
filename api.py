@@ -5,14 +5,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from adapters.store import (
-    delete_article,
-    get_article_detail,
-    init_db,
-    list_articles,
-    update_article,
-)
-from core.models import Category
+from adapters.store import delete_article, get_article_detail, init_db, list_articles, update_article
+from core.models import Category, OriginalType, SourceVerificationStatus
 from services.agent_service import ask_question, watch_topic
 
 app = FastAPI(
@@ -68,6 +62,24 @@ class SourceDetailResponse(BaseModel):
     source_summary: str | None
 
 
+class InputAssetResponse(BaseModel):
+    id: str
+    article_id: str | None
+    original_type: OriginalType
+    mime_type: str
+    input_filename: str | None
+    storage_path: str | None
+    sha256: str
+    raw_text: str | None
+    extracted_text: str | None
+    provided_source_url: str | None
+    source_verification_status: SourceVerificationStatus
+    source_verification_reason: str | None
+    source_verification_confidence: float | None
+    verified_source_id: str | None
+    created_at: str
+
+
 class ArticleDetailResponse(BaseModel):
     id: str
     title: str
@@ -78,8 +90,9 @@ class ArticleDetailResponse(BaseModel):
     n_tags: int
     summary: str | None
     original_type: str | None
-    source: SourceDetailResponse
+    source: SourceDetailResponse | None
     tags: list[str]
+    input_assets: list[InputAssetResponse]
 
 
 class ArticleUpdateRequest(BaseModel):

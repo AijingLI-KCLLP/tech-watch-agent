@@ -1,0 +1,86 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from adapters import store
+from core.models import Article, InputAsset, OriginalType, Source
+
+
+class ProvenanceStoreTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.previous_sqlite_path = store.SQLITE_PATH
+        store.SQLITE_PATH = Path(self.temp_dir.name) / "test.db"
+        store.init_db()
+
+    def tearDown(self) -> None:
+        store.SQLITE_PATH = self.previous_sqlite_path
+        self.temp_dir.cleanup()
+
+    def test_input_asset_can_be_linked_to_an_article_without_a_source(self) -> None:
+        article = Article(title="Pasted note", content="Useful source-less content.")
+        article_id = store.save_article(article)
+        asset = InputAsset(
+            article_id=article_id,
+            original_type=OriginalType.TEXT,
+            mime_type="text/plain",
+            sha256="a" * 64,
+            raw_text="Useful source-less content.",
+            extracted_text="Useful source-less content.",
+        )
+        store.save_input_asset(asset)
+
+        detail = store.get_article_detail(article_id)
+
+        self.assertIsNotNone(detail)
+        self.assertIsNone(detail["source"])
+        self.assertEqual(detail["input_assets"][0]["id"], asset.id)
+        self.assertEqual(
+            detail["input_assets"][0]["source_verification_status"],
+            "unverified",
+        )
+
+    def test_article_source_column_is_nullable(self) -> None:
+        with store._db() as conn:
+            columns = {
+                row[1]: row for row in conn.execute("PRAGMA table_info(articles)")
+            }
+
+        self.assertEqual(columns["source_id"][3], 0)
+
+    def test_legacy_migration_preserves_articles(self) -> None:
+        legacy_schema = store.SCHEMA.replace(
+            "source_id TEXT REFERENCES sources (id),",
+            "source_id TEXT NOT NULL REFERENCES sources (id),",
+        )
+        with store._db() as conn:
+            conn.executescript(
+                """
+                DROP TABLE input_assets;
+                DROP TABLE article_tag;
+                DROP TABLE tags;
+                DROP TABLE articles;
+                DROP TABLE sources;
+                """
+            )
+            conn.executescript(legacy_schema)
+
+        source = Source(name="example.com", url="https://example.com")
+        store.save_source(source)
+        article = Article(
+            source_id=source.id,
+            title="Legacy article",
+            content="Existing content must survive the migration.",
+        )
+        article_id = store.save_article(article)
+
+        store.init_db()
+        detail = store.get_article_detail(article_id)
+
+        self.assertIsNotNone(detail)
+        self.assertEqual(detail["title"], "Legacy article")
+        self.assertEqual(detail["source"]["id"], source.id)
+
+
+if __name__ == "__main__":
+    unittest.main()
