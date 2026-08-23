@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from adapters import store
@@ -47,6 +48,42 @@ class ProvenanceStoreTest(unittest.TestCase):
             }
 
         self.assertEqual(columns["source_id"][3], 0)
+
+    def test_article_list_includes_the_latest_uploaded_asset(self) -> None:
+        article = Article(title="Architecture diagram", content="A diagram description.")
+        article_id = store.save_article(article)
+        asset = InputAsset(
+            article_id=article_id,
+            original_type=OriginalType.IMAGE,
+            mime_type="image/png",
+            input_filename="diagram.png",
+            storage_path="data/uploads/diagram.png",
+            sha256="b" * 64,
+            extracted_text="Architecture diagram.",
+        )
+        store.save_input_asset(asset)
+
+        listed = store.list_articles()
+
+        self.assertEqual(listed[0]["input_asset_id"], asset.id)
+        self.assertEqual(listed[0]["input_asset_original_type"], "image")
+
+    def test_article_list_supports_limit_and_offset(self) -> None:
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        for index in range(3):
+            store.save_article(
+                Article(
+                    title=f"Article {index}",
+                    content="Content.",
+                    fetched_at=start + timedelta(minutes=index),
+                )
+            )
+
+        listed = store.list_articles(limit=1, offset=1)
+
+        self.assertEqual(store.count_articles(), 3)
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["title"], "Article 1")
 
     def test_legacy_migration_preserves_articles(self) -> None:
         legacy_schema = store.SCHEMA.replace(

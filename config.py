@@ -7,6 +7,8 @@ load_dotenv()
 ROOT = Path(__file__).parent
 DATA_DIR = ROOT / 'data'
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+UPLOADS_DIR = DATA_DIR / 'uploads'
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 SQLITE_PATH = DATA_DIR / 'tech_watch.db'
 CHROMA_PATH = DATA_DIR / 'chroma'
@@ -25,3 +27,8 @@ CHUNK_OVERLAP = 100
 
 # num of chunk for each retrieval
 TOP_K = 5
+
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
+# "vision" is reserved for a future multimodal-model extractor.
+IMAGE_EXTRACTION_MODE = os.getenv("IMAGE_EXTRACTION_MODE", "ocr").strip().lower()

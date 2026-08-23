@@ -101,6 +101,11 @@ h2 {
   padding: 3rem 0;
 }
 
+.collect-forms {
+  display: grid;
+  gap: 1.25rem;
+}
+
 h1,
 h2 {
   margin: 0.25rem 0 0;
@@ -113,6 +118,65 @@ h2 {
   display: block;
   margin-bottom: 0.65rem;
   font-size: 0.75rem;
+}
+
+.content-form {
+  display: grid;
+  gap: 0.55rem;
+  padding-top: 1.25rem;
+  border-top: 1px dashed var(--line);
+}
+
+.content-form-title {
+  margin: 0;
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 1.25rem;
+}
+
+.content-mode {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.mode-button,
+.content-form > button {
+  width: fit-content;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.72rem;
+}
+
+.mode-button {
+  color: var(--ink);
+  background: transparent;
+}
+
+.mode-button.active {
+  color: var(--paper);
+  background: var(--ink);
+}
+
+.content-form textarea {
+  min-height: 7rem;
+}
+
+.file-picker {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.7rem;
+  border: 1px solid var(--ink);
+  background: rgba(255, 255, 255, 0.4);
+  font-size: 0.72rem;
+}
+
+.file-picker input {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.file-picker span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .input-row {
@@ -179,6 +243,36 @@ button:hover:not(:disabled) {
   margin-bottom: 1.3rem;
 }
 
+.library-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.library-link,
+.pagination button {
+  color: var(--ink);
+  font-size: 0.72rem;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1.25rem;
+}
+
+.pagination button {
+  padding: 0.5rem 0.75rem;
+  color: var(--paper);
+  background: var(--ink);
+  text-decoration: none;
+}
+
 .article-list {
   border-top: 1px solid var(--ink);
 }
@@ -221,6 +315,13 @@ button:hover:not(:disabled) {
   color: var(--ink);
   background: transparent;
   font-size: 0.65rem;
+}
+
+.raw-file-link {
+  color: var(--accent-dark);
+  font-size: 0.65rem;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
 }
 
 .delete-button:hover:not(:disabled) {
@@ -344,6 +445,11 @@ button:hover:not(:disabled) {
 
   .chat-stage {
     width: 100%;
+  }
+
+  .library-heading-actions {
+    align-items: end;
+    flex-direction: column;
   }
 
   .chat-content {

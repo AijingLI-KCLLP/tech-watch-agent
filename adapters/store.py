@@ -351,6 +351,17 @@ def save_input_asset(asset: InputAsset) -> None:
         )
 
 
+def link_input_asset_to_article(asset_id: str, article_id: str) -> None:
+    """Attach previously persisted raw-input provenance to its normalized Article."""
+    with _db() as conn:
+        cursor = conn.execute(
+            "UPDATE input_assets SET article_id = ? WHERE id = ?",
+            (article_id, asset_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError(f"Input asset not found: {asset_id}")
+
+
 def list_input_assets(article_id: str) -> list[dict]:
     """Return raw-input provenance for an Article review screen."""
     with _db() as conn:
@@ -414,7 +425,12 @@ def get_article(article_id: str) -> dict | None:
         return dict(row) if row else None
 
 
-def list_articles(limit: int = 50) -> list[dict]:
+def count_articles() -> int:
+    with _db() as conn:
+        return conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
+
+
+def list_articles(limit: int = 50, offset: int = 0) -> list[dict]:
     """Return the newest articles with the fields needed by the web list."""
     with _db() as conn:
         conn.row_factory = sqlite3.Row
@@ -426,15 +442,39 @@ def list_articles(limit: int = 50) -> list[dict]:
                    a.fetched_at,
                    a.category,
                    a.n_tags,
-                   s.name AS source_name
+                   s.name AS source_name,
+                   ia.id AS input_asset_id,
+                   ia.original_type AS input_asset_original_type
             FROM articles AS a
             LEFT JOIN sources AS s ON s.id = a.source_id
-            ORDER BY a.fetched_at DESC
-            LIMIT ?
+            LEFT JOIN input_assets AS ia ON ia.id = (
+                SELECT id
+                FROM input_assets
+                WHERE article_id = a.id AND storage_path IS NOT NULL
+                ORDER BY created_at DESC
+                LIMIT 1
+            )
+            ORDER BY a.fetched_at DESC, a.id DESC
+            LIMIT ? OFFSET ?
             """,
-            (limit,),
+            (limit, offset),
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def get_input_asset_file(asset_id: str) -> dict | None:
+    """Return the stored-file metadata for an InputAsset without exposing it publicly."""
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT storage_path, mime_type, input_filename
+            FROM input_assets
+            WHERE id = ? AND storage_path IS NOT NULL
+            """,
+            (asset_id,),
+        ).fetchone()
+        return dict(row) if row else None
 
 
 _UNSET = object()

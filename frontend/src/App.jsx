@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+const DASHBOARD_ARTICLE_LIMIT = 10;
+const LIBRARY_PAGE_SIZE = 20;
 
 async function request(path, options = {}) {
   const response = await fetch(path, options);
@@ -30,8 +33,8 @@ function ArticleList({ articles, deletingArticleId, error, onDelete }) {
 
   return articles.map((article) => (
     <article className="article-row" key={article.id}>
-      {article.url ? (
-        <a className="article-title" href={article.url} rel="noreferrer" target="_blank">
+      {article.url || article.raw_file_url ? (
+        <a className="article-title" href={article.url || article.raw_file_url} rel="noreferrer" target="_blank">
           {article.title}
         </a>
       ) : (
@@ -41,6 +44,9 @@ function ArticleList({ articles, deletingArticleId, error, onDelete }) {
         <p className="article-meta">
           {article.source_name || "unknown source"} / {formatArticleDate(article.fetched_at)} / {article.n_tags} tags
         </p>
+        {article.raw_file_url && (
+          <a className="raw-file-link" href={article.raw_file_url} rel="noreferrer" target="_blank">Raw image</a>
+        )}
         <button
           className="delete-button"
           disabled={deletingArticleId === article.id}
@@ -54,28 +60,74 @@ function ArticleList({ articles, deletingArticleId, error, onDelete }) {
   ));
 }
 
+function isAllArticlesPage() {
+  return window.location.hash === "#/articles";
+}
+
+function Pagination({ currentPage, total, onNext, onPrevious }) {
+  const totalPages = Math.ceil(total / LIBRARY_PAGE_SIZE);
+  if (totalPages < 2) return null;
+
+  return (
+    <nav aria-label="Article pages" className="pagination">
+      <button disabled={currentPage === 0} onClick={onPrevious} type="button">Newer</button>
+      <p className="count">PAGE {currentPage + 1} / {totalPages}</p>
+      <button disabled={currentPage + 1 >= totalPages} onClick={onNext} type="button">Older</button>
+    </nav>
+  );
+}
+
 export default function App() {
   const [articles, setArticles] = useState(null);
+  const [articleTotal, setArticleTotal] = useState(0);
   const [articleError, setArticleError] = useState("");
+  const [showAllArticles, setShowAllArticles] = useState(isAllArticlesPage);
+  const [libraryPage, setLibraryPage] = useState(0);
   const [topic, setTopic] = useState("");
   const [watchStatus, setWatchStatus] = useState("");
   const [isWatching, setIsWatching] = useState(false);
+  const [contentMode, setContentMode] = useState("text");
+  const [contentText, setContentText] = useState("");
+  const [contentFile, setContentFile] = useState(null);
+  const [contentTitle, setContentTitle] = useState("");
+  const [contentSourceUrl, setContentSourceUrl] = useState("");
+  const [contentStatus, setContentStatus] = useState("");
+  const [isAddingContent, setIsAddingContent] = useState(false);
   const [deletingArticleId, setDeletingArticleId] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("Ask a question to begin.");
   const [isAsking, setIsAsking] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const articleLimit = showAllArticles ? LIBRARY_PAGE_SIZE : DASHBOARD_ARTICLE_LIMIT;
+  const articleOffset = showAllArticles ? libraryPage * LIBRARY_PAGE_SIZE : 0;
 
   async function loadArticles() {
     setArticleError("");
+    setArticles(null);
     try {
-      setArticles(await request("/articles"));
+      const result = await request(`/articles?limit=${articleLimit}&offset=${articleOffset}`);
+      setArticles(result.items);
+      setArticleTotal(result.total);
+      return result;
     } catch (error) {
       setArticleError(errorMessage(error));
+      return null;
     }
   }
 
   useEffect(() => {
     loadArticles();
+  }, [articleLimit, articleOffset]);
+
+  useEffect(() => {
+    function handleHashChange() {
+      setShowAllArticles(isAllArticlesPage());
+      setLibraryPage(0);
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
   async function handleWatch(event) {
@@ -97,6 +149,55 @@ export default function App() {
       setWatchStatus(`Collection failed: ${errorMessage(error)}`);
     } finally {
       setIsWatching(false);
+    }
+  }
+
+  async function handleAddContent(event) {
+    event.preventDefault();
+    const title = contentTitle.trim();
+    const providedSourceUrl = contentSourceUrl.trim();
+
+    setIsAddingContent(true);
+    setContentStatus("Transcribing, normalizing, embedding, and storing...");
+    try {
+      let result;
+      if (contentMode === "file") {
+        if (!contentFile) {
+          setContentStatus("Choose a text, PDF, or image file first.");
+          return;
+        }
+        const formData = new FormData();
+        formData.append("file", contentFile);
+        if (title) formData.append("title", title);
+        if (providedSourceUrl) formData.append("provided_source_url", providedSourceUrl);
+        result = await request("/content/file", { method: "POST", body: formData });
+      } else {
+        const text = contentText.trim();
+        if (!text) {
+          setContentStatus("Paste text to add it to the library.");
+          return;
+        }
+        result = await request("/content/text", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text,
+            ...(title && { title }),
+            ...(providedSourceUrl && { provided_source_url: providedSourceUrl }),
+          }),
+        });
+      }
+      setContentStatus(`Saved ${result.article.title} with ${result.chunk_count} chunks.`);
+      setContentText("");
+      setContentFile(null);
+      setContentTitle("");
+      setContentSourceUrl("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      await loadArticles();
+    } catch (error) {
+      setContentStatus(`Could not add content: ${errorMessage(error)}`);
+    } finally {
+      setIsAddingContent(false);
     }
   }
 
@@ -129,7 +230,10 @@ export default function App() {
     setArticleError("");
     try {
       await request(`/articles/${article.id}`, { method: "DELETE" });
-      await loadArticles();
+      const result = await loadArticles();
+      if (showAllArticles && result?.items.length === 0 && libraryPage > 0) {
+        setLibraryPage((page) => page - 1);
+      }
     } catch (error) {
       setArticleError(`Could not delete article: ${errorMessage(error)}`);
     } finally {
@@ -140,33 +244,68 @@ export default function App() {
   return (
     <main className="shell">
       <header className="masthead">
-        <a className="wordmark" href="/">Signal Cabinet</a>
+        <a className="wordmark" href="#/">Signal Cabinet</a>
         <p className="eyebrow">PERSONAL TECH WATCH / LOCAL RAG</p>
         <p className="intro">Collect the signal, then ask your library what it knows.</p>
       </header>
 
-      <section className="watch-panel" aria-labelledby="watch-title">
+      {!showAllArticles && <section className="watch-panel" aria-labelledby="watch-title">
         <div>
           <p className="section-number">01 / COLLECT</p>
           <h1 id="watch-title">Watch a topic.</h1>
         </div>
-        <form className="watch-form" onSubmit={handleWatch}>
-          <label htmlFor="watch-topic">Topic to research</label>
-          <div className="input-row">
-            <input id="watch-topic" maxLength="200" minLength="1" onChange={(event) => setTopic(event.target.value)} placeholder="AI agents" required value={topic} />
-            <button disabled={isWatching} type="submit">{isWatching ? "Collecting..." : "Collect"}</button>
-          </div>
-          <p className="status" aria-live="polite">{watchStatus}</p>
-        </form>
-      </section>
+        <div className="collect-forms">
+          <form className="watch-form" onSubmit={handleWatch}>
+            <label htmlFor="watch-topic">Search the web for a topic</label>
+            <div className="input-row">
+              <input id="watch-topic" maxLength="200" minLength="1" onChange={(event) => setTopic(event.target.value)} placeholder="AI agents" required value={topic} />
+              <button disabled={isWatching} type="submit">{isWatching ? "Collecting..." : "Collect"}</button>
+            </div>
+            <p className="status" aria-live="polite">{watchStatus}</p>
+          </form>
+
+          <form className="content-form" onSubmit={handleAddContent}>
+            <p className="content-form-title">Or add content</p>
+            <div className="content-mode" aria-label="Content input type">
+              <button className={contentMode === "text" ? "mode-button active" : "mode-button"} onClick={() => setContentMode("text")} type="button">Paste text</button>
+              <button className={contentMode === "file" ? "mode-button active" : "mode-button"} onClick={() => setContentMode("file")} type="button">Upload file</button>
+            </div>
+            <label className="sr-only" htmlFor="content-title">Title</label>
+            <input id="content-title" maxLength="500" onChange={(event) => setContentTitle(event.target.value)} placeholder="Title (optional)" value={contentTitle} />
+            <label className="sr-only" htmlFor="content-source-url">Source URL</label>
+            <input id="content-source-url" onChange={(event) => setContentSourceUrl(event.target.value)} placeholder="Original source URL (optional)" type="url" value={contentSourceUrl} />
+            {contentMode === "text" ? (
+              <>
+                <label className="sr-only" htmlFor="content-text">Text to add</label>
+                <textarea id="content-text" maxLength="100000" onChange={(event) => setContentText(event.target.value)} placeholder="Paste a note, article, or transcript..." required rows="4" value={contentText} />
+              </>
+            ) : (
+              <div className="file-picker">
+                <label htmlFor="content-file">Choose text, PDF, or image</label>
+                <input accept="text/*,.md,.markdown,.html,.htm,.csv,application/pdf,.pdf,image/*" id="content-file" onChange={(event) => setContentFile(event.target.files?.[0] || null)} ref={fileInputRef} required type="file" />
+                <span>{contentFile ? contentFile.name : "No file selected"}</span>
+              </div>
+            )}
+            <button disabled={isAddingContent} type="submit">{isAddingContent ? "Adding..." : "Add to library"}</button>
+            <p className="status" aria-live="polite">{contentStatus}</p>
+          </form>
+        </div>
+      </section>}
 
       <section className="library-panel" aria-labelledby="library-title">
         <div className="section-heading">
           <div>
             <p className="section-number">02 / LIBRARY</p>
-            <h2 id="library-title">Articles</h2>
+            <h2 id="library-title">{showAllArticles ? "All articles" : "Latest articles"}</h2>
           </div>
-          <p className="count" aria-live="polite">{articles ? `${articles.length} saved` : ""}</p>
+          <div className="library-heading-actions">
+            <p className="count" aria-live="polite">{articles !== null ? `${articleTotal} saved` : ""}</p>
+            {showAllArticles ? (
+              <a className="library-link" href="#/">Dashboard</a>
+            ) : (
+              <a className="library-link" href="#/articles">View all</a>
+            )}
+          </div>
         </div>
         <div className="article-list" aria-live="polite">
           <ArticleList
@@ -176,9 +315,17 @@ export default function App() {
             onDelete={handleDelete}
           />
         </div>
+        {showAllArticles && (
+          <Pagination
+            currentPage={libraryPage}
+            onNext={() => setLibraryPage((page) => page + 1)}
+            onPrevious={() => setLibraryPage((page) => page - 1)}
+            total={articleTotal}
+          />
+        )}
       </section>
 
-      <section className="ask-panel" aria-labelledby="ask-title">
+      {!showAllArticles && <section className="ask-panel" aria-labelledby="ask-title">
         <div className="ask-copy">
           <p className="section-number">03 / ASK</p>
           <h2 id="ask-title">Ask the cabinet.</h2>
@@ -195,7 +342,7 @@ export default function App() {
             </form>
           </div>
         </div>
-      </section>
+      </section>}
     </main>
   );
 }

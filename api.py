@@ -1,13 +1,23 @@
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl, ValidationError
 
-from adapters.store import delete_article, get_article_detail, init_db, list_articles, update_article
+from adapters.content import ContentExtractionError
+from adapters.store import (
+    delete_article,
+    count_articles,
+    get_article_detail,
+    get_input_asset_file,
+    init_db,
+    list_articles,
+    update_article,
+)
+from config import MAX_UPLOAD_BYTES, ROOT, UPLOADS_DIR
 from core.models import Category, OriginalType, SourceVerificationStatus
-from services.agent_service import ask_question, watch_topic
+from services.agent_service import add_pasted_text, add_uploaded_file, ask_question, watch_topic
 
 app = FastAPI(
     title="Tech Watch Agent API",
@@ -43,6 +53,18 @@ class AskResponse(BaseModel):
     answer: str
 
 
+class PasteTextRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=100_000)
+    title: str | None = Field(default=None, max_length=500)
+    provided_source_url: HttpUrl | None = None
+
+
+class AddContentResponse(BaseModel):
+    article: ArticleResponse
+    input_asset_id: str
+    chunk_count: int
+
+
 class ArticleListItemResponse(BaseModel):
     id: str
     title: str
@@ -51,6 +73,14 @@ class ArticleListItemResponse(BaseModel):
     category: str
     n_tags: int
     source_name: str | None
+    raw_file_url: str | None
+
+
+class ArticlePageResponse(BaseModel):
+    items: list[ArticleListItemResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 class SourceDetailResponse(BaseModel):
@@ -107,10 +137,99 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/articles", response_model=list[ArticleListItemResponse])
-def articles() -> list[ArticleListItemResponse]:
+@app.post("/content/text", response_model=AddContentResponse)
+def add_text_content(request: PasteTextRequest) -> AddContentResponse:
+    try:
+        return add_pasted_text(
+            text=request.text,
+            title=request.title,
+            provided_source_url=(
+                str(request.provided_source_url)
+                if request.provided_source_url is not None
+                else None
+            ),
+        )
+    except ContentExtractionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Content ingest failed. Check LM Studio and the application logs.",
+        ) from exc
+
+
+@app.post("/content/file", response_model=AddContentResponse)
+async def add_file_content(
+    file: UploadFile = File(...),
+    title: str | None = Form(default=None),
+    provided_source_url: HttpUrl | None = Form(default=None),
+) -> AddContentResponse:
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Uploaded file exceeds the 25 MB limit.")
+
+    try:
+        return add_uploaded_file(
+            content=content,
+            filename=file.filename or "upload",
+            mime_type=file.content_type,
+            title=title,
+            provided_source_url=(
+                str(provided_source_url) if provided_source_url is not None else None
+            ),
+        )
+    except (ContentExtractionError, ValidationError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Content ingest failed. Check LM Studio and the application logs.",
+        ) from exc
+
+
+@app.get("/articles", response_model=ArticlePageResponse)
+def articles(
+    limit: int = Query(default=10, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> ArticlePageResponse:
     init_db()
-    return list_articles()
+    items = [
+        {
+            **article,
+            "raw_file_url": (
+                f"/input-assets/{article['input_asset_id']}/file"
+                if article["input_asset_original_type"] == OriginalType.IMAGE.value
+                else None
+            ),
+        }
+        for article in list_articles(limit=limit, offset=offset)
+    ]
+    return {"items": items, "total": count_articles(), "limit": limit, "offset": offset}
+
+
+@app.get("/input-assets/{asset_id}/file", include_in_schema=False)
+def input_asset_file(asset_id: str) -> FileResponse:
+    """Serve a retained upload only when it is inside the managed uploads directory."""
+    init_db()
+    asset = get_input_asset_file(asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Raw uploaded file not found.")
+
+    file_path = (ROOT / asset["storage_path"]).resolve()
+    uploads_path = UPLOADS_DIR.resolve()
+    try:
+        file_path.relative_to(uploads_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Raw uploaded file not found.") from exc
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Raw uploaded file not found.")
+
+    return FileResponse(
+        file_path,
+        media_type=asset["mime_type"],
+        filename=asset["input_filename"],
+        content_disposition_type="inline",
+    )
 
 
 @app.get("/articles/{article_id}", response_model=ArticleDetailResponse)

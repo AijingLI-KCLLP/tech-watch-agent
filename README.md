@@ -97,6 +97,18 @@ flowchart LR
    source .venv/bin/activate
    pip install -r requirements.txt
    ```
+4. To ingest images with OCR, install Tesseract:
+   ```bash
+   brew install tesseract
+   ```
+
+Image extraction defaults to OCR. Add this to `.env` only when you want to be explicit:
+
+```env
+IMAGE_EXTRACTION_MODE=ocr
+```
+
+`IMAGE_EXTRACTION_MODE=vision` is reserved for the future multimodal LLM extractor and is not available yet.
 
 ## Usage
 
@@ -116,10 +128,13 @@ The API is available at:
 - `http://127.0.0.1:8000/docs` - interactive Swagger UI.
 - `POST /watch` - runs `watch topic -> search web -> chunk -> embed -> store`.
 - `POST /ask` - runs `ask <question> -> embed_query -> retrieve -> generate answer`.
-- `GET /articles` - lists saved articles for the web app.
+- `GET /articles?limit=10&offset=0` - returns paginated saved articles; the dashboard uses 10, and the all-articles page uses 20.
 - `GET /articles/{article_id}` - returns an article with its source metadata and tags.
 - `PATCH /articles/{article_id}` - updates reviewable metadata: `title`, `summary`, `category`, and `tags`.
 - `DELETE /articles/{article_id}` - permanently removes an article, its tag links, and its retrieval vectors.
+- `POST /content/text` - ingests pasted text through `transcribe / normalize`.
+- `POST /content/file` - ingests text, PDF, or image uploads through the matching extraction path.
+- `GET /input-assets/{asset_id}/file` - returns a retained raw upload for manual review.
 
 The CLI calls the shared services directly, so it does not require Uvicorn to be running.
 
@@ -133,7 +148,7 @@ npm install
 npm run dev
 ```
 
-Open the URL printed by Vite, normally `http://127.0.0.1:5173/`. Vite proxies `/watch`, `/ask`, and `/articles` to FastAPI on port 8000, so both terminals must be running.
+Open the URL printed by Vite, normally `http://127.0.0.1:5173/`. Vite proxies `/watch`, `/ask`, `/articles`, `/content`, and `/input-assets` to FastAPI on port 8000, so both terminals must be running.
 
 The old FastAPI-served `web/` frontend remains in the repository temporarily; the active development frontend is `frontend/`.
 
