@@ -1,6 +1,7 @@
 from typing import TypedDict
 from adapters.categorizer import categorize_article
 from adapters.embedder import embed
+from adapters.qualifier import qualify_source
 from adapters.search import search
 from adapters.store import save_article, save_article_tags, save_chunks, save_source
 from config import CHUNK_OVERLAP, CHUNK_SIZE
@@ -41,6 +42,10 @@ def categorize_node(state: IngestState) -> dict:
     for article in articles:
         article.category = categorize_article(article)
     return {"articles": articles}
+
+
+def qualify_node(state: IngestState) -> dict:
+    return {"sources": [qualify_source(source) for source in state["sources"]]}
 
 def chunk_node(state:IngestState) -> dict:
     chunks: list[Chunk] = []
@@ -83,13 +88,15 @@ def build_ingest_graph():
     g = StateGraph(IngestState)
 
     g.add_node("search", search_node)
+    g.add_node("qualify", qualify_node)
     g.add_node("categorize", categorize_node)
     g.add_node("chunk", chunk_node)
     g.add_node("embed", embed_node)
     g.add_node("store", store_node)
 
     g.add_edge(START, "search")
-    g.add_edge("search", "categorize")
+    g.add_edge("search", "qualify")
+    g.add_edge("qualify", "categorize")
     g.add_edge("categorize", "chunk")
     g.add_edge("chunk", "embed")
     g.add_edge("embed", "store")

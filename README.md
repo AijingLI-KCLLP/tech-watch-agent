@@ -205,6 +205,17 @@ python cli.py categorize
 
 `--all` re-categorizes every article, including ones previously reviewed manually.
 
+### Qualify existing sources
+
+Evaluate existing source URLs without changing articles or vectors:
+
+```bash
+python cli.py qualify --dry-run
+python cli.py qualify
+```
+
+The command evaluates each canonical URL once, then updates duplicate source rows.
+
 ## Roadmap
 
 **Done:**
@@ -212,7 +223,7 @@ python cli.py categorize
 - `ask <question>` — vector retrieval + LLM answer with source ids.
 
 **Coming soon:**
-- `qualify` - source legitimacy with justification, content-nature classification, why an item is useful, and subject categorization. `Source.credibility_score` is wired in the schema but always `None` today.
+- Content-nature classification and why an item is useful.
 - Source summaries / editorial focus metadata.
 - Auto-tagging beyond the topic keyword.
 - Article summaries.
@@ -281,6 +292,7 @@ tech_watch_agent/
 | `url` | `HttpUrl` | Yes | Canonical URL of the source                                                         |
 | `type` | `SourceType` | Yes | Type of source such as article site, blog, video, or social account                 |
 | `credibility_score` | `float \| None` | No | Credibility score assigned to the source                                            |
+| `credibility_reason` | `str \| None` | No | Concise justification for the credibility score                                    |
 | `source_summary` | `str \| None` | No | Short description of the source and its editorial focus                             |
 
 #### `Article`

@@ -109,7 +109,12 @@ class ProvenanceStoreTest(unittest.TestCase):
         )
 
     def test_get_or_create_source_reuses_the_canonical_url(self) -> None:
-        source = Source(name="example.com", url="https://example.com")
+        source = Source(
+            name="example.com",
+            url="https://example.com",
+            credibility_score=0.8,
+            credibility_reason="Established publisher.",
+        )
 
         first = store.get_or_create_source(source)
         second = store.get_or_create_source(
@@ -117,6 +122,8 @@ class ProvenanceStoreTest(unittest.TestCase):
         )
 
         self.assertEqual(first.id, second.id)
+        self.assertEqual(second.credibility_score, 0.8)
+        self.assertEqual(second.credibility_reason, "Established publisher.")
 
     def test_legacy_intent_categories_are_migrated_to_inbox(self) -> None:
         article = Article(title="Existing article", content="Existing content.")

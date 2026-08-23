@@ -3,6 +3,7 @@ import argparse
 from services.agent_service import (
     ask_question,
     categorize_existing_articles,
+    qualify_existing_sources,
     watch_topic,
 )
 
@@ -33,6 +34,16 @@ def cmd_categorize(*, all_articles: bool, dry_run: bool) -> None:
         print(f"Failed {failure['id']}: {failure['error']}")
 
 
+def cmd_qualify(*, dry_run: bool) -> None:
+    result = qualify_existing_sources(dry_run=dry_run)
+    mode = "would update" if dry_run else "updated"
+    print(
+        f"Processed {result['processed']} source URLs; qualified "
+        f"{result['qualified_sources']}; {mode} {result['updated_rows']} rows; "
+        f"left {result['unqualified_sources']} unqualified."
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="tech_watch_agent")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -58,6 +69,16 @@ def main() -> None:
         help="Classify without writing category changes",
     )
 
+    p_qualify = sub.add_parser(
+        "qualify",
+        help="Qualify existing source URLs with LM Studio",
+    )
+    p_qualify.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Evaluate sources without writing credibility fields",
+    )
+
     args = parser.parse_args()
     if args.cmd == "watch":
         cmd_watch(args.topic)
@@ -65,6 +86,8 @@ def main() -> None:
         cmd_ask(args.question)
     elif args.cmd == "categorize":
         cmd_categorize(all_articles=args.all, dry_run=args.dry_run)
+    elif args.cmd == "qualify":
+        cmd_qualify(dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

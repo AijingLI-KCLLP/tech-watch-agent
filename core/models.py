@@ -49,7 +49,8 @@ class Source(BaseModel):
     type:SourceType=SourceType.OTHER
 
     # later...
-    credibility_score: float | None = None
+    credibility_score: float | None = Field(default=None, ge=0, le=1)
+    credibility_reason: str | None = None
     source_summary:str | None = None
 
 class Article(BaseModel):

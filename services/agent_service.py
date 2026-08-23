@@ -7,6 +7,7 @@ from adapters.content import (
     sha256_bytes,
 )
 from adapters.categorizer import categorize_text
+from adapters.qualifier import qualify_source
 from adapters.url_fetch import fetch_url_content
 from adapters.source_verification import (
     SourceVerification,
@@ -19,8 +20,10 @@ from adapters.store import (
     get_or_create_source,
     init_db,
     list_articles_for_categorization,
+    list_sources_for_qualification,
     save_input_asset,
     update_article_category,
+    update_source_qualification,
 )
 from core.content_ingest_graph import build_content_ingest_graph
 from core.ingest_graph import build_ingest_graph
@@ -59,6 +62,13 @@ class CategorizeResults(TypedDict):
     failed: list[dict[str, str]]
 
 
+class QualifyResults(TypedDict):
+    processed: int
+    qualified_sources: int
+    updated_rows: int
+    unqualified_sources: int
+
+
 def _title_from_text(text: str, fallback: str) -> str:
     first_line = next((line for line in text.splitlines() if line.strip()), fallback)
     return first_line.strip()[:500]
@@ -91,10 +101,10 @@ def _ingest_normalized_content(
         and verification.source is not None
     )
     if has_verified_source:
-        source = get_or_create_source(verification.source)
+        source = get_or_create_source(qualify_source(verification.source))
         input_asset.verified_source_id = source.id
     elif fallback_source is not None:
-        source = get_or_create_source(fallback_source)
+        source = get_or_create_source(qualify_source(fallback_source))
     save_input_asset(input_asset)
 
     article = Article(
@@ -254,6 +264,35 @@ def categorize_existing_articles(
         "updated": updated,
         "kept_inbox": kept_inbox,
         "failed": failed,
+    }
+
+
+def qualify_existing_sources(*, dry_run: bool = False) -> QualifyResults:
+    """Backfill missing source-legitimacy fields once per canonical URL."""
+    init_db()
+    sources = list_sources_for_qualification()
+    qualified_sources = 0
+    updated_rows = 0
+    unqualified_sources = 0
+
+    for source in sources:
+        qualified = qualify_source(source)
+        if (
+            qualified.credibility_score is None
+            or qualified.credibility_reason is None
+        ):
+            unqualified_sources += 1
+            continue
+
+        qualified_sources += 1
+        if not dry_run:
+            updated_rows += update_source_qualification(qualified)
+
+    return {
+        "processed": len(sources),
+        "qualified_sources": qualified_sources,
+        "updated_rows": updated_rows,
+        "unqualified_sources": unqualified_sources,
     }
 
 def watch_topic(topic: str) -> WatchResults:

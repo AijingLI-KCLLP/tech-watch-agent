@@ -34,6 +34,8 @@ SCHEMA = """
              NULL,
              credibility_score
              REAL,
+             credibility_reason
+             TEXT,
              source_summary
              TEXT
          );
@@ -154,6 +156,10 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE sources ADD COLUMN source_summary TEXT"
             )
+        if "credibility_reason" not in source_columns:
+            conn.execute(
+                "ALTER TABLE sources ADD COLUMN credibility_reason TEXT"
+            )
         if "why_interest" in source_columns:
             conn.execute(
                 """
@@ -262,13 +268,18 @@ def init_db() -> None:
 def save_source(source: Source) -> None:
     with _db() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO sources (id, name, url, type, credibility_score, source_summary) VALUES (?, ?, ?, ?, ?, ?)",
+            """
+            INSERT OR IGNORE INTO sources
+                (id, name, url, type, credibility_score, credibility_reason, source_summary)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
             (
                 source.id,
                 source.name,
                 str(source.url),
                 source.type.value,
                 source.credibility_score,
+                source.credibility_reason,
                 source.source_summary,
             ),
         )
@@ -281,7 +292,7 @@ def get_or_create_source(source: Source) -> Source:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
             """
-            SELECT id, name, url, type, credibility_score, source_summary
+            SELECT id, name, url, type, credibility_score, credibility_reason, source_summary
             FROM sources
             WHERE url = ?
             LIMIT 1
@@ -289,19 +300,42 @@ def get_or_create_source(source: Source) -> Source:
             (source_url,),
         ).fetchone()
         if row is not None:
+            if (
+                source.credibility_score is not None
+                or source.credibility_reason is not None
+            ):
+                conn.execute(
+                    """
+                    UPDATE sources
+                    SET credibility_score = COALESCE(?, credibility_score),
+                        credibility_reason = COALESCE(?, credibility_reason)
+                    WHERE id = ?
+                    """,
+                    (source.credibility_score, source.credibility_reason, row["id"]),
+                )
             return Source(
                 id=row["id"],
                 name=row["name"],
                 url=row["url"],
                 type=row["type"],
-                credibility_score=row["credibility_score"],
+                credibility_score=(
+                    source.credibility_score
+                    if source.credibility_score is not None
+                    else row["credibility_score"]
+                ),
+                credibility_reason=(
+                    source.credibility_reason
+                    if source.credibility_reason is not None
+                    else row["credibility_reason"]
+                ),
                 source_summary=row["source_summary"],
             )
 
         conn.execute(
             """
-            INSERT INTO sources (id, name, url, type, credibility_score, source_summary)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO sources
+                (id, name, url, type, credibility_score, credibility_reason, source_summary)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 source.id,
@@ -309,10 +343,54 @@ def get_or_create_source(source: Source) -> Source:
                 source_url,
                 source.type.value,
                 source.credibility_score,
+                source.credibility_reason,
                 source.source_summary,
             ),
         )
     return source
+
+
+def list_sources_for_qualification() -> list[Source]:
+    """Return one representative per source URL missing qualification data."""
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT id, name, url, type, credibility_score, credibility_reason, source_summary
+            FROM sources
+            WHERE credibility_score IS NULL OR credibility_reason IS NULL
+            GROUP BY url
+            ORDER BY url ASC
+            """
+        ).fetchall()
+        return [
+            Source(
+                id=row["id"],
+                name=row["name"],
+                url=row["url"],
+                type=row["type"],
+                credibility_score=row["credibility_score"],
+                credibility_reason=row["credibility_reason"],
+                source_summary=row["source_summary"],
+            )
+            for row in rows
+        ]
+
+
+def update_source_qualification(source: Source) -> int:
+    """Apply one qualification to every duplicated row for the canonical URL."""
+    if source.credibility_score is None or source.credibility_reason is None:
+        return 0
+    with _db() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE sources
+            SET credibility_score = ?, credibility_reason = ?
+            WHERE url = ?
+            """,
+            (source.credibility_score, source.credibility_reason, str(source.url)),
+        )
+        return cursor.rowcount
 
 
 def save_article(article: Article) -> str:
@@ -583,6 +661,7 @@ def get_article_detail(article_id: str) -> dict | None:
                    s.url AS source_url,
                    s.type AS source_type,
                    s.credibility_score,
+                   s.credibility_reason,
                    s.source_summary
             FROM articles AS a
             LEFT JOIN sources AS s ON s.id = a.source_id
@@ -612,6 +691,7 @@ def get_article_detail(article_id: str) -> dict | None:
                 "url": row["source_url"],
                 "type": row["source_type"],
                 "credibility_score": row["credibility_score"],
+                "credibility_reason": row["credibility_reason"],
                 "source_summary": row["source_summary"],
             }
 

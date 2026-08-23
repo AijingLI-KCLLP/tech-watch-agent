@@ -101,6 +101,7 @@ class SourceDetailResponse(BaseModel):
     url: str
     type: str
     credibility_score: float | None
+    credibility_reason: str | None
     source_summary: str | None
 
 
