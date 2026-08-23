@@ -522,11 +522,19 @@ def list_input_assets(article_id: str) -> list[dict]:
         return [dict(row) for row in rows]
 
 
-def save_article_tags(article_id: str, tags: list[str]) -> None:
-    unique_tags = list(dict.fromkeys(tags))
+def save_article_tags(
+    article_id: str, tags: list[str], *, replace: bool = False
+) -> int:
+    """Add tags without replacing existing links and return the number added."""
+    unique_tags = _normalized_tags(tags)
+    added_links = 0
     with _db() as conn:
+        if replace:
+            conn.execute("DELETE FROM article_tag WHERE article_id = ?", (article_id,))
         for tag in unique_tags:
-            row = conn.execute("SELECT id FROM tags WHERE name = ?", (tag,)).fetchone()
+            row = conn.execute(
+                "SELECT id FROM tags WHERE name = ? COLLATE NOCASE", (tag,)
+            ).fetchone()
             if row:
                 tag_id = row[0]
             else:
@@ -536,14 +544,22 @@ def save_article_tags(article_id: str, tags: list[str]) -> None:
                     (new_tag.id, new_tag.name, new_tag.created_at.isoformat()),
                 )
                 tag_id = new_tag.id
-            conn.execute(
+            cursor = conn.execute(
                 "INSERT OR IGNORE INTO article_tag (article_id, tag_id) VALUES(?, ?)",
                 (article_id, tag_id),
             )
+            added_links += cursor.rowcount
         conn.execute(
-            "UPDATE articles SET n_tags = ? WHERE id = ?",
-            (len(unique_tags), article_id),
+            """
+            UPDATE articles
+            SET n_tags = (
+                SELECT COUNT(*) FROM article_tag WHERE article_id = ?
+            )
+            WHERE id = ?
+            """,
+            (article_id, article_id),
         )
+    return added_links
 
 
 def get_article(article_id: str) -> dict | None:
@@ -589,7 +605,29 @@ def list_articles(limit: int = 50, offset: int = 0) -> list[dict]:
             """,
             (limit, offset),
         ).fetchall()
-        return [dict(row) for row in rows]
+        articles = [dict(row) for row in rows]
+        for article in articles:
+            tags = conn.execute(
+                """
+                SELECT t.name
+                FROM tags AS t
+                JOIN article_tag AS at ON at.tag_id = t.id
+                WHERE at.article_id = ?
+                ORDER BY t.name COLLATE NOCASE ASC
+                """,
+                (article["id"],),
+            ).fetchall()
+            unique_tags: list[str] = []
+            seen_tags: set[str] = set()
+            for tag in tags:
+                name = tag[0]
+                if name.casefold() in seen_tags:
+                    continue
+                unique_tags.append(name)
+                seen_tags.add(name.casefold())
+            article["tags"] = unique_tags
+            article["n_tags"] = len(unique_tags)
+        return articles
 
 
 def list_articles_for_categorization(*, only_inbox: bool = True) -> list[dict]:
@@ -602,6 +640,20 @@ def list_articles_for_categorization(*, only_inbox: bool = True) -> list[dict]:
             SELECT id, title, content, category
             FROM articles
             {where_clause}
+            ORDER BY fetched_at ASC, id ASC
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def list_articles_for_tagging() -> list[dict]:
+    """Return article text for an LLM tag backfill."""
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT id, title, content
+            FROM articles
             ORDER BY fetched_at ASC, id ASC
             """
         ).fetchall()
@@ -638,7 +690,16 @@ _UNSET = object()
 
 def _normalized_tags(tags: list[str]) -> list[str]:
     """Trim, remove empty values, and preserve the first occurrence of each tag."""
-    return list(dict.fromkeys(tag.strip() for tag in tags if tag.strip()))
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for tag in tags:
+        value = tag.strip()
+        key = value.casefold()
+        if not value or key in seen:
+            continue
+        normalized.append(value)
+        seen.add(key)
+    return normalized
 
 
 def get_article_detail(article_id: str) -> dict | None:
@@ -695,6 +756,15 @@ def get_article_detail(article_id: str) -> dict | None:
                 "source_summary": row["source_summary"],
             }
 
+        unique_tags: list[str] = []
+        seen_tags: set[str] = set()
+        for tag in tags:
+            name = tag["name"]
+            if name.casefold() in seen_tags:
+                continue
+            unique_tags.append(name)
+            seen_tags.add(name.casefold())
+
         return {
             "id": row["id"],
             "title": row["title"],
@@ -702,11 +772,11 @@ def get_article_detail(article_id: str) -> dict | None:
             "content": row["content"],
             "fetched_at": row["fetched_at"],
             "category": row["category"],
-            "n_tags": row["n_tags"],
+            "n_tags": len(unique_tags),
             "summary": row["summary"],
             "original_type": row["original_type"],
             "source": source,
-            "tags": [tag["name"] for tag in tags],
+            "tags": unique_tags,
             "input_assets": list_input_assets(article_id),
         }
 
@@ -745,7 +815,7 @@ def update_article(
             conn.execute("DELETE FROM article_tag WHERE article_id = ?", (article_id,))
             for tag_name in replacement_tags:
                 tag_row = conn.execute(
-                    "SELECT id FROM tags WHERE name = ?", (tag_name,)
+                    "SELECT id FROM tags WHERE name = ? COLLATE NOCASE", (tag_name,)
                 ).fetchone()
                 if tag_row:
                     tag_id = tag_row[0]

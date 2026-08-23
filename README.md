@@ -1,12 +1,18 @@
 # Tech Watch Agent
 
-CLI agent that ingests web articles on a topic and answers questions with source citations (RAG).
+Local knowledge-library agent for collecting articles, enriching them with LLM
+metadata, and answering questions with source citations (RAG).
 
-> **Status — work in progress.** This is the TP milestone: ingest + RAG only. The full feature set (source legitimacy scoring, auto-categorization, manual tag editing, value-added republishing, web UI) lands in the September 2026 milestone. See [Roadmap](#roadmap) below.
+> **Status — active development.** Search and manual-content ingest,
+> source qualification, tags, categories, the REST API, and the React library
+> UI are available. Generated metadata is advisory and can be edited through
+> `PATCH /articles/{article_id}`.
 
 ## Workflow
 
-Two independent LangGraph pipelines:
+The implemented LangGraph paths are ingest (web search or supplied content) and
+retrieval. The publishing path in the diagram is planned, not currently exposed
+by the application.
 
 ![docs/diagrams/agent_workflow.png](docs/diagrams/agent_workflow.png)
 
@@ -73,7 +79,7 @@ flowchart LR
 
 ```
 
-- **Ingest** (`watch`): Tavily search → categorize → chunk text → embed chunks → write to SQLite (articles) + ChromaDB (vectors).
+- **Ingest** (`watch`): Tavily search → qualify source → generate tags and category → chunk text → embed chunks → write to SQLite (articles) + ChromaDB (vectors). Text, files, and URLs follow the same enrichment, chunking, embedding, and storage path after extraction.
 - **Retrieve** (`ask`): embed question → top-K similar chunks from ChromaDB → LLM answers using only that context.
 
 
@@ -92,7 +98,11 @@ flowchart LR
 
 ## Install & Setup
 
-1. Open LM Studio. Load both models. Start the server on port 1234. Verify:
+1. Open LM Studio, load a chat model and an embedding model, then start its
+   server on port 1234. The default model identifiers are
+   `openai/gpt-oss-20b` and `text-embedding-nomic-embed-text-v1.5`; override
+   them with the `LMSTUDIO_MODEL` and `LMSTUDIO_EMBEDDING_MODEL` variables in
+   `.env` when needed. Verify the server:
    ```bash
    curl http://localhost:1234/v1/models
    ```
@@ -135,7 +145,7 @@ The API is available at:
 
 - `http://127.0.0.1:8000/health` - server health check.
 - `http://127.0.0.1:8000/docs` - interactive Swagger UI.
-- `POST /watch` - runs `watch topic -> search web -> chunk -> embed -> store`.
+- `POST /watch` - searches Tavily, qualifies sources, generates tags and a category, then chunks, embeds, and stores matching articles.
 - `POST /ask` - runs `ask <question> -> embed_query -> retrieve -> generate answer`.
 - `GET /articles?limit=10&offset=0` - returns paginated saved articles; the dashboard uses 10, and the all-articles page uses 20.
 - `GET /articles/{article_id}` - returns an article with its source metadata and tags.
@@ -189,21 +199,38 @@ If nothing has been ingested yet:
 No relevant context found. Run `watch <topic>` first.
 ```
 
-### Categorize existing articles
+### Correct categories on existing articles
 
-New content is categorized during ingest. To backfill articles already in SQLite, first inspect the result without writing it:
+New content is categorized during ingest. The categorizer command is the way to
+apply an improved categorization prompt to articles already stored in SQLite.
+It calls LM Studio directly; Uvicorn does not need to be running.
+
+Start with a no-write pass for only uncategorized items:
 
 ```bash
 python cli.py categorize --dry-run
 ```
 
-Then persist decisions for items still in `inbox`:
+Apply those decisions:
 
 ```bash
 python cli.py categorize
 ```
 
-`--all` re-categorizes every article, including ones previously reviewed manually.
+To correct every existing category after changing the categorizer, preview the
+bulk run, then repeat it without `--dry-run`:
+
+```bash
+python cli.py categorize --all --dry-run
+python cli.py categorize --all
+```
+
+`--all` can overwrite categories you set manually, including changing one to
+`inbox` when the model cannot choose a category. Use it only when that is
+intended. The dry run verifies that LM Studio can process the library and
+reports how many rows would change; it does not display each proposed label.
+For article-by-article review or correction, use `PATCH /articles/{article_id}`
+with a valid category identifier.
 
 ### Qualify existing sources
 
@@ -216,23 +243,32 @@ python cli.py qualify
 
 The command evaluates each canonical URL once, then updates duplicate source rows.
 
+### Tag existing articles
+
+Generate additional LLM tags for every saved article. Existing topic and manual
+tags are preserved:
+
+```bash
+python cli.py tag --dry-run
+python cli.py tag
+```
+
+To replace outdated automatic tags instead of merging new ones, review the
+result first, then run the replacement. This also removes any manual/topic tags:
+
+```bash
+python cli.py tag --replace --dry-run
+python cli.py tag --replace
+```
+
 ## Roadmap
 
-**Done:**
-- `watch <topic>` — Tavily search, chunking, embedding, dual storage.
-- `ask <question>` — vector retrieval + LLM answer with source ids.
+Implemented capabilities include web search, pasted text/file/URL capture, OCR
+for images, source qualification, automatic categories and tags, manual article
+metadata updates through the API, the React library UI, and RAG retrieval.
 
-**Coming soon:**
-- Content-nature classification and why an item is useful.
-- Source summaries / editorial focus metadata.
-- Auto-tagging beyond the topic keyword.
-- Article summaries.
-- Manual tag editing.
-- Capture pipelines (web form, bot, dictaphone).
-- Value-added republishing.
-- Web UI on top of the FastAPI endpoints.
-
-The data model already reserves the fields for the September features — no rewrite needed, only additive nodes/agents.
+Planned capabilities include value-added republishing, richer article/source
+summaries, and additional capture channels such as bots or dictation.
 
 ## Project layout
 
@@ -253,12 +289,16 @@ tech_watch_agent/
 │   └── assets/chatbox.png # provided chat-box artwork
 ├── core/
 │   ├── models.py          # Source / Article / InputAsset / Tag / ArticleTag / Chunk
-│   ├── ingest_graph.py    # search → chunk → embed → store
+│   ├── ingest_graph.py    # search → qualify → tag → categorize → chunk → embed → store
+│   ├── content_ingest_graph.py # supplied content → tag → categorize → chunk → embed → store
 │   └── retrieve_graph.py  # embed_query → retrieve → generate
 ├── adapters/              # only layer talking to the outside world
 │   ├── search.py          # Tavily
 │   ├── embedder.py        # LM Studio embeddings
 │   ├── llm.py             # LM Studio chat
+│   ├── categorizer.py     # category classifier
+│   ├── qualifier.py       # advisory source qualification
+│   ├── tagger.py          # generated article tags
 │   └── store.py           # SQLite + ChromaDB
 └── data/                  # gitignored — DBs live here
 ```
@@ -271,14 +311,14 @@ tech_watch_agent/
 - `OriginalType`:`text`,`image`,`pdf`
 - `SourceVerificationStatus`: `verified`, `plausible`, `unverified`, `mismatch`
 - `Category`: `inbox`, `ai_automation`, `tech_code`, `product_business`, `science_research`, `design_creativity`, `culture_society`, `learning_life`
-  - inbox: not yet qualified
-  - ai_automation: LLMs, agents, workflows
-  - tech_code: software, infrastructure, security, programming
-  - product_business: product, startups, strategy, market
-  - science_research: papers, scientific discoveries
-  - design_creativity: UX, visual design, writing, creative tools
-  - culture_society: media, history, politics, social topics
-  - learning_life: education, productivity, health, personal development
+  - `inbox`: insufficient, ambiguous, or out-of-taxonomy material
+  - `ai_automation`: AI/ML, LLMs, agents, prompts, model evaluation, or AI workflows
+  - `tech_code`: software, APIs, infrastructure, data systems, security, developer tools, and non-AI automation
+  - `product_business`: products, companies, customers, pricing, markets, strategy, and operations
+  - `science_research`: scientific disciplines, academic research, papers, experiments, and findings
+  - `design_creativity`: UX/UI, visual or interaction design, writing, art, and creative tools
+  - `culture_society`: politics, history, media, society, communities, and cultural analysis
+  - `learning_life`: education, career development, productivity, health, habits, and personal development
 
 
 ### Entities
@@ -305,10 +345,10 @@ tech_watch_agent/
 | `title`         | `str`             | Yes      | Title of the article, or extracted/summarized from file                       |
 | `content`       | `str`             | Yes      | Full article content used for chunking and retrieval                          |
 | `fetched_at`    | `datetime`        | Yes      | Date and time when the article was ingested                                   |
-| `category`      | `Category`        | Yes      | Primary subject category; use `inbox` until qualified                         |
+| `category`      | `Category`        | Yes      | Primary subject category; automated classification may leave unclear items in `inbox` |
 | `n_tags`        | `int`             | Yes      | Number of tags currently linked to the article                                |
 | `summary`       | `str \| None`     | No       | Short summary of the article                                                  |
-| `original_type` | `OriginalType \| None`     | No       | `text`(all text file like txt, md etc),`image`,`pdf`, None if it's not manuel added 
+| `original_type` | `OriginalType \| None` | No | `text` for pasted or text-file content, `image`, or `pdf`; `None` for search-ingested articles |
 
 #### `InputAsset`
 

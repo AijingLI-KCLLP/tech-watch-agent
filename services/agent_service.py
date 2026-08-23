@@ -8,6 +8,7 @@ from adapters.content import (
 )
 from adapters.categorizer import categorize_text
 from adapters.qualifier import qualify_source
+from adapters.tagger import tag_text
 from adapters.url_fetch import fetch_url_content
 from adapters.source_verification import (
     SourceVerification,
@@ -20,7 +21,9 @@ from adapters.store import (
     get_or_create_source,
     init_db,
     list_articles_for_categorization,
+    list_articles_for_tagging,
     list_sources_for_qualification,
+    save_article_tags,
     save_input_asset,
     update_article_category,
     update_source_qualification,
@@ -58,6 +61,7 @@ class AddContentResult(TypedDict):
 class CategorizeResults(TypedDict):
     processed: int
     updated: int
+    would_update: int
     kept_inbox: int
     failed: list[dict[str, str]]
 
@@ -67,6 +71,13 @@ class QualifyResults(TypedDict):
     qualified_sources: int
     updated_rows: int
     unqualified_sources: int
+
+
+class TagResults(TypedDict):
+    processed: int
+    generated_tags: int
+    added_tag_links: int
+    failed: list[dict[str, str]]
 
 
 def _title_from_text(text: str, fallback: str) -> str:
@@ -240,6 +251,7 @@ def categorize_existing_articles(
     init_db()
     articles = list_articles_for_categorization(only_inbox=only_inbox)
     updated = 0
+    would_update = 0
     kept_inbox = 0
     failed: list[dict[str, str]] = []
 
@@ -252,17 +264,47 @@ def categorize_existing_articles(
 
         if category is Category.INBOX:
             kept_inbox += 1
-        if (
-            not dry_run
-            and category.value != article["category"]
-            and update_article_category(article["id"], category)
-        ):
-            updated += 1
+        if category.value != article["category"]:
+            would_update += 1
+            if not dry_run and update_article_category(article["id"], category):
+                updated += 1
 
     return {
         "processed": len(articles),
         "updated": updated,
+        "would_update": would_update,
         "kept_inbox": kept_inbox,
+        "failed": failed,
+    }
+
+
+def tag_existing_articles(
+    *, dry_run: bool = False, replace: bool = False
+) -> TagResults:
+    """Generate tags for saved articles, optionally replacing prior tag links."""
+    init_db()
+    articles = list_articles_for_tagging()
+    generated_tags = 0
+    added_tag_links = 0
+    failed: list[dict[str, str]] = []
+
+    for article in articles:
+        try:
+            tags = tag_text(article["title"], article["content"])
+        except Exception as exc:
+            failed.append({"id": article["id"], "error": str(exc)})
+            continue
+
+        generated_tags += len(tags)
+        if not dry_run and tags:
+            added_tag_links += save_article_tags(
+                article["id"], tags, replace=replace
+            )
+
+    return {
+        "processed": len(articles),
+        "generated_tags": generated_tags,
+        "added_tag_links": added_tag_links,
         "failed": failed,
     }
 

@@ -84,6 +84,7 @@ class ArticleListItemResponse(BaseModel):
     fetched_at: str
     category: str
     n_tags: int
+    tags: list[str]
     source_name: str | None
     raw_file_url: str | None
 

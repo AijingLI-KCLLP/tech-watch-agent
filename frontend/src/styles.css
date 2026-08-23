@@ -360,9 +360,33 @@ button:hover:not(:disabled) {
 
 .article-heading {
   display: flex;
-  align-items: baseline;
-  gap: 0.65rem;
+  flex-direction: column;
+  gap: 0.45rem;
   min-width: 0;
+}
+
+.article-title-line,
+.tag-list {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.tag-list {
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tag-list li {
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.4);
+  font-size: 0.58rem;
+  line-height: 1.1;
 }
 
 .article-title {

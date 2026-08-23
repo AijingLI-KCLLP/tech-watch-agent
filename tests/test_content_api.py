@@ -96,6 +96,7 @@ class ContentApiTest(unittest.TestCase):
                 "fetched_at": "2026-01-01T00:00:00+00:00",
                 "category": "inbox",
                 "n_tags": 0,
+                "tags": [],
                 "source_name": None,
                 "input_asset_id": None,
                 "input_asset_original_type": None,

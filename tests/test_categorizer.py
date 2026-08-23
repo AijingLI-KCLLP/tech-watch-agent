@@ -24,7 +24,11 @@ class CategorizerTest(unittest.TestCase):
         category = categorize_text("Python release", "New Python compiler features.")
 
         self.assertEqual(category, Category.TECH_CODE)
-        self.assertIn("Python release", get_llm.return_value.prompts[0])
+        prompt = get_llm.return_value.prompts[0]
+        self.assertIn("Python release", prompt)
+        self.assertIn("Ansible", prompt)
+        self.assertIn("primary subject and reader intent", prompt)
+        self.assertIn("Output exactly one", prompt)
 
     @patch("adapters.categorizer.get_llm", return_value=_FakeLlm("technology"))
     def test_invalid_model_output_stays_in_inbox(self, get_llm) -> None:

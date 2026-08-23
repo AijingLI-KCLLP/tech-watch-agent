@@ -4,6 +4,7 @@ from adapters.embedder import embed
 from adapters.qualifier import qualify_source
 from adapters.search import search
 from adapters.store import save_article, save_article_tags, save_chunks, save_source
+from adapters.tagger import tag_article
 from config import CHUNK_OVERLAP, CHUNK_SIZE
 from core.models import Article, Chunk, Source
 from langgraph.graph import END, START, StateGraph
@@ -14,6 +15,7 @@ class IngestState(TypedDict):
     articles: list[Article]
     chunks: list[Chunk]
     embeddings: list[list[float]]
+    article_tags: dict[str, list[str]]
 
 def _split(text: str, size:int, overlap:int) ->list[str]:
     pieces = []
@@ -44,6 +46,14 @@ def categorize_node(state: IngestState) -> dict:
     return {"articles": articles}
 
 
+def tag_node(state: IngestState) -> dict:
+    return {
+        "article_tags": {
+            article.id: tag_article(article) for article in state["articles"]
+        }
+    }
+
+
 def qualify_node(state: IngestState) -> dict:
     return {"sources": [qualify_source(source) for source in state["sources"]]}
 
@@ -67,7 +77,18 @@ def store_node(state: IngestState) -> dict:
     for article in state["articles"]:
         persisted_article_id = save_article(article)
         article_id_map[article.id] = persisted_article_id
-        save_article_tags(persisted_article_id, [state["topic"]])
+        generated_tags = state["article_tags"].get(article.id, [])
+        save_article_tags(
+            persisted_article_id,
+            [
+                state["topic"],
+                *(
+                    tag
+                    for tag in generated_tags
+                    if tag.casefold() != state["topic"].strip().casefold()
+                ),
+            ],
+        )
 
     persisted_chunks: list[Chunk] = []
     for chunk in state["chunks"]:
@@ -89,6 +110,7 @@ def build_ingest_graph():
 
     g.add_node("search", search_node)
     g.add_node("qualify", qualify_node)
+    g.add_node("tag", tag_node)
     g.add_node("categorize", categorize_node)
     g.add_node("chunk", chunk_node)
     g.add_node("embed", embed_node)
@@ -96,7 +118,8 @@ def build_ingest_graph():
 
     g.add_edge(START, "search")
     g.add_edge("search", "qualify")
-    g.add_edge("qualify", "categorize")
+    g.add_edge("qualify", "tag")
+    g.add_edge("tag", "categorize")
     g.add_edge("categorize", "chunk")
     g.add_edge("chunk", "embed")
     g.add_edge("embed", "store")

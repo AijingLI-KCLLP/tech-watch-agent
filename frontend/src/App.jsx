@@ -38,15 +38,22 @@ function ArticleList({ articles, deletingArticleId, error, onDelete }) {
   return articles.map((article) => (
     <article className="article-row" key={article.id}>
       <div className="article-heading">
-        <span className="category-badge" data-category={article.category || "inbox"}>
-          {formatCategory(article.category)}
-        </span>
-        {article.url || article.raw_file_url ? (
-          <a className="article-title" href={article.url || article.raw_file_url} rel="noreferrer" target="_blank">
-            {article.title}
-          </a>
-        ) : (
-          <span className="article-title">{article.title}</span>
+        <div className="article-title-line">
+          <span className="category-badge" data-category={article.category || "inbox"}>
+            {formatCategory(article.category)}
+          </span>
+          {article.url || article.raw_file_url ? (
+            <a className="article-title" href={article.url || article.raw_file_url} rel="noreferrer" target="_blank">
+              {article.title}
+            </a>
+          ) : (
+            <span className="article-title">{article.title}</span>
+          )}
+        </div>
+        {article.tags?.length > 0 && (
+          <ul aria-label={`Tags for ${article.title}`} className="tag-list">
+            {article.tags.map((tag) => <li key={tag}>{tag}</li>)}
+          </ul>
         )}
       </div>
       <div className="article-actions">

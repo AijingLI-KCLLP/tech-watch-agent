@@ -34,6 +34,7 @@ class CategorizeServiceTest(unittest.TestCase):
 
         self.assertEqual(result["processed"], 1)
         self.assertEqual(result["updated"], 1)
+        self.assertEqual(result["would_update"], 1)
         self.assertEqual(categorize_text.call_count, 1)
         self.assertEqual(
             store.get_article_detail(inbox_id)["category"],
@@ -42,6 +43,20 @@ class CategorizeServiceTest(unittest.TestCase):
         self.assertEqual(
             store.get_article_detail(reviewed_id)["category"],
             Category.DESIGN_CREATIVITY.value,
+        )
+
+    @patch("services.agent_service.categorize_text", return_value=Category.TECH_CODE)
+    def test_dry_run_reports_changes_without_writing(self, categorize_text) -> None:
+        article_id = store.save_article(Article(title="Inbox", content="Python code."))
+
+        result = categorize_existing_articles(dry_run=True)
+
+        self.assertEqual(result["processed"], 1)
+        self.assertEqual(result["would_update"], 1)
+        self.assertEqual(result["updated"], 0)
+        self.assertEqual(
+            store.get_article_detail(article_id)["category"],
+            Category.INBOX.value,
         )
 
 

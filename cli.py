@@ -4,6 +4,7 @@ from services.agent_service import (
     ask_question,
     categorize_existing_articles,
     qualify_existing_sources,
+    tag_existing_articles,
     watch_topic,
 )
 
@@ -26,8 +27,9 @@ def cmd_categorize(*, all_articles: bool, dry_run: bool) -> None:
         dry_run=dry_run,
     )
     mode = "would update" if dry_run else "updated"
+    update_count = result["would_update"] if dry_run else result["updated"]
     print(
-        f"Processed {result['processed']} articles; {mode} {result['updated']}; "
+        f"Processed {result['processed']} articles; {mode} {update_count}; "
         f"kept {result['kept_inbox']} in inbox."
     )
     for failure in result["failed"]:
@@ -42,6 +44,23 @@ def cmd_qualify(*, dry_run: bool) -> None:
         f"{result['qualified_sources']}; {mode} {result['updated_rows']} rows; "
         f"left {result['unqualified_sources']} unqualified."
     )
+
+
+def cmd_tag(*, dry_run: bool, replace: bool) -> None:
+    result = tag_existing_articles(dry_run=dry_run, replace=replace)
+    if dry_run:
+        print(
+            f"Processed {result['processed']} articles; generated "
+            f"{result['generated_tags']} tag candidates (dry run)."
+        )
+    else:
+        print(
+            f"Processed {result['processed']} articles; generated "
+            f"{result['generated_tags']} tags and added "
+            f"{result['added_tag_links']} new tag links."
+        )
+    for failure in result["failed"]:
+        print(f"Failed {failure['id']}: {failure['error']}")
 
 
 def main() -> None:
@@ -79,6 +98,18 @@ def main() -> None:
         help="Evaluate sources without writing credibility fields",
     )
 
+    p_tag = sub.add_parser("tag", help="Generate tags for existing articles with LM Studio")
+    p_tag.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Generate tags without adding them to articles",
+    )
+    p_tag.add_argument(
+        "--replace",
+        action="store_true",
+        help="Replace all existing tags for each article (including manual/topic tags)",
+    )
+
     args = parser.parse_args()
     if args.cmd == "watch":
         cmd_watch(args.topic)
@@ -88,6 +119,8 @@ def main() -> None:
         cmd_categorize(all_articles=args.all, dry_run=args.dry_run)
     elif args.cmd == "qualify":
         cmd_qualify(dry_run=args.dry_run)
+    elif args.cmd == "tag":
+        cmd_tag(dry_run=args.dry_run, replace=args.replace)
 
 
 if __name__ == "__main__":
