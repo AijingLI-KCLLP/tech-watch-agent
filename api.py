@@ -17,7 +17,13 @@ from adapters.store import (
 )
 from config import MAX_UPLOAD_BYTES, ROOT, UPLOADS_DIR
 from core.models import Category, OriginalType, SourceVerificationStatus
-from services.agent_service import add_pasted_text, add_uploaded_file, ask_question, watch_topic
+from services.agent_service import (
+    add_article_by_url,
+    add_pasted_text,
+    add_uploaded_file,
+    ask_question,
+    watch_topic,
+)
 
 app = FastAPI(
     title="Tech Watch Agent API",
@@ -57,6 +63,11 @@ class PasteTextRequest(BaseModel):
     text: str = Field(min_length=1, max_length=100_000)
     title: str | None = Field(default=None, max_length=500)
     provided_source_url: HttpUrl | None = None
+
+
+class AddArticleUrlRequest(BaseModel):
+    url: HttpUrl
+    title: str | None = Field(default=None, max_length=500)
 
 
 class AddContentResponse(BaseModel):
@@ -185,6 +196,22 @@ async def add_file_content(
         raise HTTPException(
             status_code=503,
             detail="Content ingest failed. Check LM Studio and the application logs.",
+        ) from exc
+
+
+@app.post("/content/url", response_model=AddContentResponse)
+def add_url_content(request: AddArticleUrlRequest) -> AddContentResponse:
+    try:
+        return add_article_by_url(
+            url=str(request.url),
+            title=request.title,
+        )
+    except ContentExtractionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="URL ingest failed. Check the URL, OCR setup, and application logs.",
         ) from exc
 
 

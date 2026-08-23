@@ -34,8 +34,10 @@ flowchart LR
 
         F --> J[inspect content type]
         J -- text/html --> K[fetch direct content]
-        J -- pdf --> H
-        J -- image --> I
+        J -- application/pdf --> AM[download]
+        J -- image/* --> AN[download]
+        AM --> H
+        AN --> I
         K --> AL{content available?}
         AL -- yes --> N
         AL -- no / anti crawler --> L[ask for manual file input]
@@ -140,6 +142,7 @@ The API is available at:
 - `DELETE /articles/{article_id}` - permanently removes an article, its tag links, and its retrieval vectors.
 - `POST /content/text` - ingests pasted text through `transcribe / normalize`.
 - `POST /content/file` - ingests text, PDF, or image uploads, then verifies a provided source URL or finds a candidate source.
+- `POST /content/url` - inspects the URL `Content-Type`, then ingests HTML, text, PDF, or image content directly.
 - `GET /input-assets/{asset_id}/file` - returns a retained raw upload for manual review.
 
 The CLI calls the shared services directly, so it does not require Uvicorn to be running.

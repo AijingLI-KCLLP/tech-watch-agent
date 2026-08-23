@@ -61,6 +61,27 @@ class ContentApiTest(unittest.TestCase):
             provided_source_url="https://example.com/",
         )
 
+    @patch("api.add_article_by_url")
+    def test_article_url_is_forwarded_to_the_service(self, add_article_by_url) -> None:
+        add_article_by_url.return_value = {
+            "article": {"id": "article-3", "title": "A URL article", "url": "https://example.com/article"},
+            "input_asset_id": "asset-3",
+            "chunk_count": 1,
+            "source_verification_status": "verified",
+        }
+
+        response = self.client.post(
+            "/content/url",
+            json={"url": "https://example.com/article", "title": "A URL article"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["article"]["url"], "https://example.com/article")
+        add_article_by_url.assert_called_once_with(
+            url="https://example.com/article",
+            title="A URL article",
+        )
+
     @patch("api.init_db")
     @patch("api.count_articles", return_value=21)
     @patch("api.list_articles")

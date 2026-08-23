@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from adapters import store
 from adapters.source_verification import SourceVerification, personal_note_source
+from adapters.url_fetch import FetchedUrlContent
 from core.models import InputAsset, OriginalType, Source, SourceType, SourceVerificationStatus
 from services import agent_service
 
@@ -100,6 +101,33 @@ class SourceServiceTest(unittest.TestCase):
         self.assertEqual(detail["source"]["name"], "Personal note")
         self.assertEqual(detail["source"]["type"], SourceType.PERSONAL_NOTE.value)
         self.assertIsNone(detail["input_assets"][0]["verified_source_id"])
+
+    @patch("services.agent_service.persist_upload", return_value="data/uploads/article.html")
+    @patch("services.agent_service.fetch_url_content")
+    @patch("services.agent_service.build_content_ingest_graph", return_value=_FakeContentGraph())
+    def test_direct_url_creates_a_verified_source_and_raw_asset(
+        self, build_graph, fetch_url_content, persist_upload
+    ) -> None:
+        fetch_url_content.return_value = FetchedUrlContent(
+            requested_url="https://example.com/article",
+            final_url="https://example.com/article",
+            filename="article.html",
+            mime_type="text/html",
+            original_type=OriginalType.TEXT,
+            title="An article",
+            text="An extracted article.",
+            content=b"<html>An extracted article.</html>",
+        )
+
+        result = agent_service.add_article_by_url("https://example.com/article")
+
+        detail = store.get_article_detail(result["article"]["id"])
+
+        self.assertEqual(result["source_verification_status"], "verified")
+        self.assertEqual(detail["url"], "https://example.com/article")
+        self.assertEqual(detail["source"]["name"], "example.com")
+        self.assertEqual(detail["input_assets"][0]["mime_type"], "text/html")
+        self.assertEqual(detail["input_assets"][0]["provided_source_url"], "https://example.com/article")
 
 
 if __name__ == "__main__":

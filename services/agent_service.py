@@ -6,10 +6,12 @@ from adapters.content import (
     persist_upload,
     sha256_bytes,
 )
+from adapters.url_fetch import fetch_url_content
 from adapters.source_verification import (
     SourceVerification,
     find_source,
     personal_note_source,
+    source_for_url,
     verify_provided_source,
 )
 from adapters.store import get_or_create_source, init_db, save_input_asset
@@ -170,6 +172,39 @@ def add_uploaded_file(
         title=title,
         verification=verification,
         fallback_source=fallback_source,
+    )
+
+
+def add_article_by_url(
+    url: str,
+    title: str | None = None,
+) -> AddContentResult:
+    fetched = fetch_url_content(url)
+    verification = SourceVerification(
+        status=SourceVerificationStatus.VERIFIED,
+        reason=f"Fetched directly from {fetched.final_url}.",
+        confidence=1.0,
+        source=source_for_url(fetched.final_url),
+        article_url=fetched.final_url,
+    )
+    digest = sha256_bytes(fetched.content)
+    input_asset = InputAsset(
+        original_type=fetched.original_type,
+        mime_type=fetched.mime_type,
+        input_filename=fetched.filename,
+        storage_path=persist_upload(fetched.content, fetched.filename, digest),
+        sha256=digest,
+        extracted_text=fetched.text,
+        provided_source_url=url,
+        source_verification_status=verification.status,
+        source_verification_reason=verification.reason,
+        source_verification_confidence=verification.confidence,
+    )
+    return _ingest_normalized_content(
+        normalized_text=fetched.text,
+        input_asset=input_asset,
+        title=title or fetched.title or None,
+        verification=verification,
     )
 
 def watch_topic(topic: str) -> WatchResults:

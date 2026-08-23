@@ -1,15 +1,13 @@
 import re
 from dataclasses import dataclass
-from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
 
-from adapters.content import ContentExtractionError, extract_file_content, normalize_text
+from adapters.content import ContentExtractionError
+from adapters.url_fetch import fetch_url_content
 from config import TAVILY_API_KEY
 from core.models import Source, SourceType, SourceVerificationStatus
 
-MAX_SOURCE_FETCH_BYTES = 5 * 1024 * 1024
 PERSONAL_NOTE_SOURCE_URL = "https://personal-note.invalid/"
 
 
@@ -22,34 +20,7 @@ class SourceVerification:
     article_url: str | None = None
 
 
-class _HtmlExtractor(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self._in_title = False
-        self._ignored_depth = 0
-        self.title_parts: list[str] = []
-        self.text_parts: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag == "title":
-            self._in_title = True
-        if tag in {"script", "style", "noscript", "svg"}:
-            self._ignored_depth += 1
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag == "title":
-            self._in_title = False
-        if tag in {"script", "style", "noscript", "svg"} and self._ignored_depth:
-            self._ignored_depth -= 1
-
-    def handle_data(self, data: str) -> None:
-        if self._in_title:
-            self.title_parts.append(data)
-        if not self._ignored_depth:
-            self.text_parts.append(data)
-
-
-def _source_for_url(url: str) -> Source:
+def source_for_url(url: str) -> Source:
     parsed = urlparse(url)
     hostname = parsed.hostname
     if parsed.scheme not in {"http", "https"} or hostname is None:
@@ -72,51 +43,15 @@ def personal_note_source() -> Source:
     )
 
 
-def _extract_html(content: bytes, charset: str | None) -> tuple[str, str]:
-    parser = _HtmlExtractor()
-    parser.feed(content.decode(charset or "utf-8", errors="replace"))
-    parser.close()
-    raw_title = " ".join(parser.title_parts).strip()
-    title = normalize_text(raw_title) if raw_title else ""
-    return title, normalize_text("\n\n".join(parser.text_parts))
-
-
 def _fetch_source_content(url: str) -> tuple[str, str, str]:
     """Fetch a source and return its final URL, title, and readable text."""
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
-        raise ContentExtractionError("Source URLs must use http or https.")
-
-    request = Request(url, headers={"User-Agent": "TechWatchAgent/0.1"})
     try:
-        with urlopen(request, timeout=10) as response:
-            content = response.read(MAX_SOURCE_FETCH_BYTES + 1)
-            if len(content) > MAX_SOURCE_FETCH_BYTES:
-                raise ContentExtractionError("The source page exceeds the 5 MB limit.")
-            final_url = response.geturl()
-            mime_type = response.headers.get_content_type()
-            charset = response.headers.get_content_charset()
+        fetched = fetch_url_content(url)
     except ContentExtractionError:
         raise
     except Exception as exc:
         raise ContentExtractionError(f"Could not fetch the source URL: {exc}") from exc
-
-    try:
-        if mime_type in {"text/html", "application/xhtml+xml"}:
-            title, text = _extract_html(content, charset)
-        else:
-            _, _, text = extract_file_content(
-                content,
-                urlparse(final_url).path.rsplit("/", maxsplit=1)[-1] or "source",
-                mime_type,
-            )
-            title = ""
-    except ContentExtractionError:
-        raise
-    except Exception as exc:
-        raise ContentExtractionError(f"Could not extract source text: {exc}") from exc
-
-    return final_url, title, text
+    return fetched.final_url, fetched.title, fetched.text
 
 
 def _normalized_for_match(text: str) -> str:
@@ -179,7 +114,7 @@ def _verification_from_candidate(
         candidate_text=candidate_text,
         candidate_title=candidate_title,
     )
-    source = _source_for_url(candidate_url) if status is SourceVerificationStatus.VERIFIED else None
+    source = source_for_url(candidate_url) if status is SourceVerificationStatus.VERIFIED else None
     return SourceVerification(
         status=status,
         reason=f"{prefix} {reason}",

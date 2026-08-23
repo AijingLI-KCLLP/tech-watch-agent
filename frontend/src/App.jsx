@@ -123,8 +123,10 @@ export default function App() {
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
   const [contentTitle, setContentTitle] = useState("");
   const [contentSourceUrl, setContentSourceUrl] = useState("");
+  const [articleUrl, setArticleUrl] = useState("");
   const [contentStatus, setContentStatus] = useState("");
   const [isAddingContent, setIsAddingContent] = useState(false);
+  const [isAddingUrl, setIsAddingUrl] = useState(false);
   const [deletingArticleId, setDeletingArticleId] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("Ask a question to begin.");
@@ -256,6 +258,35 @@ export default function App() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  async function handleAddUrl() {
+    const url = articleUrl.trim();
+    if (!url) {
+      setContentStatus("Enter an article URL first.");
+      return;
+    }
+
+    setIsAddingUrl(true);
+    setContentStatus("Inspecting, downloading, normalizing, embedding, and storing...");
+    try {
+      const result = await request("/content/url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url,
+          ...(contentTitle.trim() && { title: contentTitle.trim() }),
+        }),
+      });
+      setContentStatus(`Saved ${result.article.title} with ${result.chunk_count} chunks. Source: verified.`);
+      setArticleUrl("");
+      setContentTitle("");
+      await loadArticles();
+    } catch (error) {
+      setContentStatus(`Could not add URL: ${errorMessage(error)}`);
+    } finally {
+      setIsAddingUrl(false);
+    }
+  }
+
   async function handleAsk(event) {
     event.preventDefault();
     const normalizedQuestion = question.trim();
@@ -341,7 +372,17 @@ export default function App() {
               imagePreviewUrl={imagePreviewUrl}
               onClear={clearContentFile}
             />
-            <button disabled={isAddingContent} type="submit">{isAddingContent ? "Adding..." : "Add to library"}</button>
+            <div className="url-add-row">
+              <label className="sr-only" htmlFor="article-url">Article URL to ingest</label>
+              <input id="article-url" onChange={(event) => setArticleUrl(event.target.value)} onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  handleAddUrl();
+                }
+              }} placeholder="Add article by URL: https://example.com/article" type="url" value={articleUrl} />
+              <button disabled={isAddingContent || isAddingUrl} onClick={handleAddUrl} type="button">{isAddingUrl ? "Adding URL..." : "Add URL"}</button>
+            </div>
+            <button disabled={isAddingContent || isAddingUrl} type="submit">{isAddingContent ? "Adding..." : "Add to library"}</button>
             <p className="status" aria-live="polite">{contentStatus}</p>
           </form>
         </div>
