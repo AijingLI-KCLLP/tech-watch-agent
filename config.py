@@ -27,6 +27,8 @@ CHUNK_OVERLAP = 100
 
 # num of chunk for each retrieval
 TOP_K = 5
+# Minimum cosine similarity for a chunk to be considered usable answer context.
+RETRIEVAL_MIN_SCORE = float(os.getenv("RETRIEVAL_MIN_SCORE", "0.45"))
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 

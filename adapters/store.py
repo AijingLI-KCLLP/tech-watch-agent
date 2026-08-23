@@ -897,9 +897,12 @@ def save_chunks(chunks: list[Chunk], embeddings: list[list[float]]) -> None:
 
 def query_chunks(query_embedding: list[float], top_k: int) -> list[dict]:
     col = _chroma()
+    chunk_count = col.count()
+    if chunk_count == 0:
+        return []
     res = col.query(
         query_embeddings=[query_embedding],
-        n_results=top_k,
+        n_results=min(top_k, chunk_count),
     )
     out = []
     for text, meta, dist in zip(

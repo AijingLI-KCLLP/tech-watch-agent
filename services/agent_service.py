@@ -361,7 +361,18 @@ def ask_question(question: str) -> AskResults:
     graph = build_retrieve_graph()
     final = graph.invoke({"question": question})
 
+    if final.get("needs_web_search", False):
+        watch_topic(question)
+        final = graph.invoke({"question": question})
+
+    answer = final["answer"]
+    if final.get("needs_web_search", False):
+        answer = (
+            "I searched for and ingested material related to this question, but "
+            "could not find enough relevant context to answer it reliably."
+        )
+
     return {
         "question": question,
-        "answer": final["answer"],
+        "answer": answer,
     }

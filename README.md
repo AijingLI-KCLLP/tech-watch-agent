@@ -80,7 +80,7 @@ flowchart LR
 ```
 
 - **Ingest** (`watch`): Tavily search → qualify source → generate tags and category → chunk text → embed chunks → write to SQLite (articles) + ChromaDB (vectors). Text, files, and URLs follow the same enrichment, chunking, embedding, and storage path after extraction.
-- **Retrieve** (`ask`): embed question → top-K similar chunks from ChromaDB → LLM answers using only that context.
+- **Retrieve** (`ask`): embed question → retrieve relevant chunks from ChromaDB → LLM answers using only that context. If the library has no sufficiently relevant context, the agent searches and ingests material for the question once, then retries retrieval.
 
 
 ## Stack
@@ -146,7 +146,7 @@ The API is available at:
 - `http://127.0.0.1:8000/health` - server health check.
 - `http://127.0.0.1:8000/docs` - interactive Swagger UI.
 - `POST /watch` - searches Tavily, qualifies sources, generates tags and a category, then chunks, embeds, and stores matching articles.
-- `POST /ask` - runs `ask <question> -> embed_query -> retrieve -> generate answer`.
+- `POST /ask` - retrieves relevant chunks and answers from them. When context is missing or insufficient, it searches Tavily, ingests the question topic, then retries once.
 - `GET /articles?limit=10&offset=0` - returns paginated saved articles; the dashboard uses 10, and the all-articles page uses 20.
 - `GET /articles/{article_id}` - returns an article with its source metadata and tags.
 - `PATCH /articles/{article_id}` - updates reviewable metadata: `title`, `summary`, `category`, and `tags`.
@@ -194,10 +194,10 @@ actions to achieve goals [source: 3f9a...]. Modern agents typically
 combine an LLM with tools and memory [source: 7c12...].
 ```
 
-If nothing has been ingested yet:
-```
-No relevant context found. Run `watch <topic>` first.
-```
+If the library does not yet contain enough relevant material, `ask` searches
+Tavily and ingests results for the question automatically before answering.
+The first request for a new topic can therefore take longer and requires both
+Tavily and LM Studio to be available.
 
 ### Correct categories on existing articles
 
