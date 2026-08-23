@@ -21,9 +21,14 @@ class SourceType(str, Enum):
     OTHER = "other"
 
 class Category(str, Enum):
-    UNSORTED = "unsorted"
-    PRO = "pro"
-    PERSO = "perso"
+    INBOX = "inbox"
+    AI_AUTOMATION = "ai_automation"
+    TECH_CODE = "tech_code"
+    PRODUCT_BUSINESS = "product_business"
+    SCIENCE_RESEARCH = "science_research"
+    DESIGN_CREATIVITY = "design_creativity"
+    CULTURE_SOCIETY = "culture_society"
+    LEARNING_LIFE = "learning_life"
 
 class OriginalType(str, Enum):
     TEXT = "text"
@@ -54,7 +59,7 @@ class Article(BaseModel):
     title:str
     content:str
     fetched_at:datetime = Field(default_factory=_now)
-    category:Category=Category.UNSORTED
+    category:Category=Category.INBOX
     n_tags:int = 0
     summary:str | None = None
     original_type:OriginalType | None = None

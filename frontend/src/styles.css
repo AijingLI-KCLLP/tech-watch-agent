@@ -358,6 +358,13 @@ button:hover:not(:disabled) {
   border-bottom: 1px solid var(--line);
 }
 
+.article-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
 .article-title {
   color: inherit;
   font-family: "Newsreader", Georgia, serif;
@@ -365,6 +372,28 @@ button:hover:not(:disabled) {
   text-decoration-color: var(--accent);
   text-decoration-thickness: 2px;
   text-underline-offset: 0.2em;
+}
+
+.category-badge {
+  flex: 0 0 auto;
+  padding: 0.18rem 0.34rem;
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.category-badge[data-category="ai_automation"] {
+  color: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+
+.category-badge[data-category="science_research"] {
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .article-meta {
@@ -573,6 +602,12 @@ button:hover:not(:disabled) {
 
   .article-row {
     grid-template-columns: 1fr;
+  }
+
+  .article-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
   }
 
   .article-meta {

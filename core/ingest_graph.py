@@ -1,4 +1,5 @@
 from typing import TypedDict
+from adapters.categorizer import categorize_article
 from adapters.embedder import embed
 from adapters.search import search
 from adapters.store import save_article, save_article_tags, save_chunks, save_source
@@ -33,6 +34,13 @@ def search_node(state:IngestState) -> dict:
             seen[src.id] = src
         articles.append(article)
     return {"sources":list(seen.values()), "articles":articles}
+
+
+def categorize_node(state: IngestState) -> dict:
+    articles = state["articles"]
+    for article in articles:
+        article.category = categorize_article(article)
+    return {"articles": articles}
 
 def chunk_node(state:IngestState) -> dict:
     chunks: list[Chunk] = []
@@ -75,12 +83,14 @@ def build_ingest_graph():
     g = StateGraph(IngestState)
 
     g.add_node("search", search_node)
+    g.add_node("categorize", categorize_node)
     g.add_node("chunk", chunk_node)
     g.add_node("embed", embed_node)
     g.add_node("store", store_node)
 
     g.add_edge(START, "search")
-    g.add_edge("search", "chunk")
+    g.add_edge("search", "categorize")
+    g.add_edge("categorize", "chunk")
     g.add_edge("chunk", "embed")
     g.add_edge("embed", "store")
     g.add_edge("store",END)

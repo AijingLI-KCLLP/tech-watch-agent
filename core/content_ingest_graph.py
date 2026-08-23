@@ -1,5 +1,6 @@
 from typing import TypedDict
 
+from adapters.categorizer import categorize_article
 from adapters.embedder import embed
 from adapters.store import link_input_asset_to_article, save_article, save_chunks
 from config import CHUNK_OVERLAP, CHUNK_SIZE
@@ -23,6 +24,12 @@ def _split(text: str, size: int, overlap: int) -> list[str]:
         pieces.append(text[start : start + size])
         start += step
     return pieces
+
+
+def categorize_node(state: ContentIngestState) -> dict:
+    article = state["article"]
+    article.category = categorize_article(article)
+    return {"article": article}
 
 
 def chunk_node(state: ContentIngestState) -> dict:
@@ -61,10 +68,12 @@ def store_node(state: ContentIngestState) -> dict:
 
 def build_content_ingest_graph():
     graph = StateGraph(ContentIngestState)
+    graph.add_node("categorize", categorize_node)
     graph.add_node("chunk", chunk_node)
     graph.add_node("embed", embed_node)
     graph.add_node("store", store_node)
-    graph.add_edge(START, "chunk")
+    graph.add_edge(START, "categorize")
+    graph.add_edge("categorize", "chunk")
     graph.add_edge("chunk", "embed")
     graph.add_edge("embed", "store")
     return graph.compile()

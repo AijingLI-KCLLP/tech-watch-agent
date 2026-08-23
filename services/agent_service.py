@@ -6,6 +6,7 @@ from adapters.content import (
     persist_upload,
     sha256_bytes,
 )
+from adapters.categorizer import categorize_text
 from adapters.url_fetch import fetch_url_content
 from adapters.source_verification import (
     SourceVerification,
@@ -14,11 +15,18 @@ from adapters.source_verification import (
     source_for_url,
     verify_provided_source,
 )
-from adapters.store import get_or_create_source, init_db, save_input_asset
+from adapters.store import (
+    get_or_create_source,
+    init_db,
+    list_articles_for_categorization,
+    save_input_asset,
+    update_article_category,
+)
 from core.content_ingest_graph import build_content_ingest_graph
 from core.ingest_graph import build_ingest_graph
 from core.models import (
     Article,
+    Category,
     InputAsset,
     OriginalType,
     Source,
@@ -42,6 +50,13 @@ class AddContentResult(TypedDict):
     input_asset_id: str
     chunk_count: int
     source_verification_status: str
+
+
+class CategorizeResults(TypedDict):
+    processed: int
+    updated: int
+    kept_inbox: int
+    failed: list[dict[str, str]]
 
 
 def _title_from_text(text: str, fallback: str) -> str:
@@ -206,6 +221,40 @@ def add_article_by_url(
         title=title or fetched.title or None,
         verification=verification,
     )
+
+
+def categorize_existing_articles(
+    *, only_inbox: bool = True, dry_run: bool = False
+) -> CategorizeResults:
+    """Categorize saved articles while preserving reviewed categories by default."""
+    init_db()
+    articles = list_articles_for_categorization(only_inbox=only_inbox)
+    updated = 0
+    kept_inbox = 0
+    failed: list[dict[str, str]] = []
+
+    for article in articles:
+        try:
+            category = categorize_text(article["title"], article["content"])
+        except Exception as exc:
+            failed.append({"id": article["id"], "error": str(exc)})
+            continue
+
+        if category is Category.INBOX:
+            kept_inbox += 1
+        if (
+            not dry_run
+            and category.value != article["category"]
+            and update_article_category(article["id"], category)
+        ):
+            updated += 1
+
+    return {
+        "processed": len(articles),
+        "updated": updated,
+        "kept_inbox": kept_inbox,
+        "failed": failed,
+    }
 
 def watch_topic(topic: str) -> WatchResults:
     init_db()

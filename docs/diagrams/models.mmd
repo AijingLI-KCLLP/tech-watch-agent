@@ -21,6 +21,24 @@ erDiagram
         OriginalType original_type
     }
 
+    InputAsset {
+        string id
+        string article_id
+        OriginalType original_type
+        string mime_type
+        string input_filename
+        string storage_path
+        string sha256
+        string raw_text
+        string extracted_text
+        string provided_source_url
+        SourceVerificationStatus source_verification_status
+        string source_verification_reason
+        float source_verification_confidence
+        string verified_source_id
+        datetime created_at
+    }
+
     Tag {
         string id
         string name
@@ -40,6 +58,7 @@ erDiagram
     }
 
     Source ||--o{ Article : "source_id"
+    Article ||--o{ InputAsset : "article_id"
     Article ||--o{ ArticleTag : "article_id"
     Tag ||--o{ ArticleTag : "tag_id"
     Article ||--o{ Chunk : "article_id"

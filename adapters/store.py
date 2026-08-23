@@ -9,7 +9,7 @@ from config import (
     SQLITE_PATH
 )
 
-from core.models import Article, Chunk, InputAsset, Source, Tag
+from core.models import Article, Category, Chunk, InputAsset, Source, Tag
 
 # SQLite
 
@@ -49,7 +49,7 @@ SCHEMA = """
              title TEXT NOT NULL,
              content TEXT NOT NULL,
              fetched_at TEXT NOT NULL,
-             category TEXT NOT NULL DEFAULT 'unsorted',
+             category TEXT NOT NULL DEFAULT 'inbox',
              n_tags INTEGER NOT NULL DEFAULT 0,
              summary TEXT,
              original_type TEXT
@@ -173,6 +173,17 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE articles ADD COLUMN original_type TEXT"
             )
+        # Old categories described personal intent, not article subject. Do not infer a topic.
+        conn.execute(
+            """
+            UPDATE articles
+            SET category = CASE category
+                WHEN 'culture' THEN 'culture_society'
+                ELSE 'inbox'
+            END
+            WHERE category IN ('unsorted', 'pro', 'perso', 'metier', 'culture')
+            """
+        )
         # Rebuild old article tables so both the URL and Source are optional.
         needs_article_rebuild = (
             columns.get("url", (None, None, None, None, 1))[3]
@@ -193,7 +204,7 @@ def init_db() -> None:
                     title         TEXT    NOT NULL,
                     content       TEXT    NOT NULL,
                     fetched_at    TEXT    NOT NULL,
-                    category      TEXT    NOT NULL DEFAULT 'unsorted',
+                    category      TEXT    NOT NULL DEFAULT 'inbox',
                     n_tags        INTEGER NOT NULL DEFAULT 0,
                     summary       TEXT,
                     original_type TEXT
@@ -501,6 +512,32 @@ def list_articles(limit: int = 50, offset: int = 0) -> list[dict]:
             (limit, offset),
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def list_articles_for_categorization(*, only_inbox: bool = True) -> list[dict]:
+    """Return the content required for an LLM categorization pass."""
+    where_clause = "WHERE category = 'inbox'" if only_inbox else ""
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            f"""
+            SELECT id, title, content, category
+            FROM articles
+            {where_clause}
+            ORDER BY fetched_at ASC, id ASC
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def update_article_category(article_id: str, category: Category) -> bool:
+    """Persist an automated category decision without altering manual metadata."""
+    with _db() as conn:
+        cursor = conn.execute(
+            "UPDATE articles SET category = ? WHERE id = ?",
+            (category.value, article_id),
+        )
+        return cursor.rowcount == 1
 
 
 def get_input_asset_file(asset_id: str) -> dict | None:

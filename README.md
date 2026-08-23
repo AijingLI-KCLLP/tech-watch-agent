@@ -73,8 +73,9 @@ flowchart LR
 
 ```
 
-- **Ingest** (`watch`): Tavily search → chunk text → embed chunks → write to SQLite (articles) + ChromaDB (vectors).
+- **Ingest** (`watch`): Tavily search → categorize → chunk text → embed chunks → write to SQLite (articles) + ChromaDB (vectors).
 - **Retrieve** (`ask`): embed question → top-K similar chunks from ChromaDB → LLM answers using only that context.
+
 
 ## Stack
 
@@ -188,6 +189,22 @@ If nothing has been ingested yet:
 No relevant context found. Run `watch <topic>` first.
 ```
 
+### Categorize existing articles
+
+New content is categorized during ingest. To backfill articles already in SQLite, first inspect the result without writing it:
+
+```bash
+python cli.py categorize --dry-run
+```
+
+Then persist decisions for items still in `inbox`:
+
+```bash
+python cli.py categorize
+```
+
+`--all` re-categorizes every article, including ones previously reviewed manually.
+
 ## Roadmap
 
 **Done:**
@@ -195,9 +212,8 @@ No relevant context found. Run `watch <topic>` first.
 - `ask <question>` — vector retrieval + LLM answer with source ids.
 
 **Coming soon:**
-- Source legitimacy / credibility scoring (`Source.credibility_score` is wired in the schema but always `None` today).
+- `qualify` - source legitimacy with justification, content-nature classification, why an item is useful, and subject categorization. `Source.credibility_score` is wired in the schema but always `None` today.
 - Source summaries / editorial focus metadata.
-- Auto-categorization of articles (PRO / PERSO).
 - Auto-tagging beyond the topic keyword.
 - Article summaries.
 - Manual tag editing.
@@ -241,9 +257,18 @@ tech_watch_agent/
 ### Enums
 
 - `SourceType`: `blog`, `article`, `video`, `podcast`, `social`, `personal_note`, `other`
-- `Category`: `unsorted`, `pro`, `perso`
 - `OriginalType`:`text`,`image`,`pdf`
 - `SourceVerificationStatus`: `verified`, `plausible`, `unverified`, `mismatch`
+- `Category`: `inbox`, `ai_automation`, `tech_code`, `product_business`, `science_research`, `design_creativity`, `culture_society`, `learning_life`
+  - inbox: not yet qualified
+  - ai_automation: LLMs, agents, workflows
+  - tech_code: software, infrastructure, security, programming
+  - product_business: product, startups, strategy, market
+  - science_research: papers, scientific discoveries
+  - design_creativity: UX, visual design, writing, creative tools
+  - culture_society: media, history, politics, social topics
+  - learning_life: education, productivity, health, personal development
+
 
 ### Entities
 
@@ -268,7 +293,7 @@ tech_watch_agent/
 | `title`         | `str`             | Yes      | Title of the article, or extracted/summarized from file                       |
 | `content`       | `str`             | Yes      | Full article content used for chunking and retrieval                          |
 | `fetched_at`    | `datetime`        | Yes      | Date and time when the article was ingested                                   |
-| `category`      | `Category`        | Yes      | unsorted, pro, perso                                                          |
+| `category`      | `Category`        | Yes      | Primary subject category; use `inbox` until qualified                         |
 | `n_tags`        | `int`             | Yes      | Number of tags currently linked to the article                                |
 | `summary`       | `str \| None`     | No       | Short summary of the article                                                  |
 | `original_type` | `OriginalType \| None`     | No       | `text`(all text file like txt, md etc),`image`,`pdf`, None if it's not manuel added 

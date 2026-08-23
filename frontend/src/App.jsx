@@ -20,6 +20,10 @@ function formatArticleDate(dateValue) {
   return Number.isNaN(date.valueOf()) ? "unknown date" : date.toLocaleDateString();
 }
 
+function formatCategory(category) {
+  return (category || "inbox").replaceAll("_", " ");
+}
+
 function ArticleList({ articles, deletingArticleId, error, onDelete }) {
   if (error) {
     return <p className="empty-state">Could not load articles: {error}</p>;
@@ -33,13 +37,18 @@ function ArticleList({ articles, deletingArticleId, error, onDelete }) {
 
   return articles.map((article) => (
     <article className="article-row" key={article.id}>
-      {article.url || article.raw_file_url ? (
-        <a className="article-title" href={article.url || article.raw_file_url} rel="noreferrer" target="_blank">
-          {article.title}
-        </a>
-      ) : (
-        <span className="article-title">{article.title}</span>
-      )}
+      <div className="article-heading">
+        <span className="category-badge" data-category={article.category || "inbox"}>
+          {formatCategory(article.category)}
+        </span>
+        {article.url || article.raw_file_url ? (
+          <a className="article-title" href={article.url || article.raw_file_url} rel="noreferrer" target="_blank">
+            {article.title}
+          </a>
+        ) : (
+          <span className="article-title">{article.title}</span>
+        )}
+      </div>
       <div className="article-actions">
         <p className="article-meta">
           {article.source_name || "unknown source"} / {formatArticleDate(article.fetched_at)} / {article.n_tags} tags

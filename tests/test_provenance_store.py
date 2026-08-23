@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from adapters import store
-from core.models import Article, InputAsset, OriginalType, Source
+from core.models import Article, Category, InputAsset, OriginalType, Source
 
 
 class ProvenanceStoreTest(unittest.TestCase):
@@ -85,6 +85,29 @@ class ProvenanceStoreTest(unittest.TestCase):
         self.assertEqual(len(listed), 1)
         self.assertEqual(listed[0]["title"], "Article 1")
 
+    def test_categorization_queries_inbox_by_default(self) -> None:
+        inbox_id = store.save_article(Article(title="Inbox", content="Content."))
+        reviewed_id = store.save_article(
+            Article(
+                title="Reviewed",
+                content="Content.",
+                category=Category.TECH_CODE,
+            )
+        )
+
+        articles = store.list_articles_for_categorization()
+
+        self.assertEqual([article["id"] for article in articles], [inbox_id])
+        self.assertTrue(store.update_article_category(inbox_id, Category.LEARNING_LIFE))
+        self.assertEqual(
+            store.get_article_detail(inbox_id)["category"],
+            Category.LEARNING_LIFE.value,
+        )
+        self.assertEqual(
+            store.get_article_detail(reviewed_id)["category"],
+            Category.TECH_CODE.value,
+        )
+
     def test_get_or_create_source_reuses_the_canonical_url(self) -> None:
         source = Source(name="example.com", url="https://example.com")
 
@@ -94,6 +117,17 @@ class ProvenanceStoreTest(unittest.TestCase):
         )
 
         self.assertEqual(first.id, second.id)
+
+    def test_legacy_intent_categories_are_migrated_to_inbox(self) -> None:
+        article = Article(title="Existing article", content="Existing content.")
+        article_id = store.save_article(article)
+        with store._db() as conn:
+            conn.execute("UPDATE articles SET category = 'pro' WHERE id = ?", (article_id,))
+
+        store.init_db()
+        detail = store.get_article_detail(article_id)
+
+        self.assertEqual(detail["category"], "inbox")
 
     def test_legacy_migration_preserves_articles(self) -> None:
         legacy_schema = store.SCHEMA.replace(

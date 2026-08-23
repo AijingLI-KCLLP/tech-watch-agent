@@ -94,7 +94,7 @@ class ContentApiTest(unittest.TestCase):
                 "title": "Newest article",
                 "url": None,
                 "fetched_at": "2026-01-01T00:00:00+00:00",
-                "category": "unsorted",
+                "category": "inbox",
                 "n_tags": 0,
                 "source_name": None,
                 "input_asset_id": None,
