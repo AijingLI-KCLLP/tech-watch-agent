@@ -94,6 +94,104 @@ h2 {
   border-bottom: 1px solid var(--line);
 }
 
+.discovery-panel {
+  padding: 3rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.discovery-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.discovery-heading > button,
+.discovery-topic button {
+  padding: 0.5rem 0.7rem;
+  font-size: 0.68rem;
+}
+
+.discovery-copy {
+  max-width: 38rem;
+  margin: 0.8rem 0 1rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.discovery-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  padding: 0;
+  border: 0;
+}
+
+.discovery-categories label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.35);
+  color: var(--muted);
+  font-size: 0.65rem;
+  text-transform: capitalize;
+}
+
+.discovery-categories input {
+  width: auto;
+  accent-color: var(--accent-dark);
+}
+
+.discovery-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 1.25rem;
+}
+
+.discovery-topic {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.discovery-topic h3,
+.discovery-topic p {
+  margin: 0;
+}
+
+.discovery-topic h3 {
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 1.25rem;
+  line-height: 1.05;
+}
+
+.discovery-topic p {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.discovery-topic > div {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: auto;
+}
+
+.discovery-topic a {
+  color: var(--accent-dark);
+  font-size: 0.68rem;
+  text-underline-offset: 0.2em;
+}
+
 .watch-panel {
   display: grid;
   grid-template-columns: minmax(12rem, 0.8fr) minmax(19rem, 1.2fr);
@@ -713,6 +811,7 @@ select {
   }
 
   .watch-panel,
+  .discovery-panel,
   .library-panel,
   .ask-panel {
     padding: 2rem 0;
@@ -724,6 +823,10 @@ select {
 
   .url-add-row {
     display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .discovery-list {
     grid-template-columns: 1fr;
   }
 

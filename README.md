@@ -148,6 +148,7 @@ The API is available at:
 - `http://127.0.0.1:8000/health` - server health check.
 - `http://127.0.0.1:8000/docs` - interactive Swagger UI.
 - `POST /watch` - searches Tavily, qualifies sources, generates tags and a category, then chunks, embeds, and stores matching articles.
+- `GET /discover/topics?categories=tech_code&categories=ai_automation` - returns recent, clickable news topics for selected technical-watch categories. The default categories are Tech & Code and AI & Automation.
 - `POST /ask` - retrieves relevant chunks and answers from them. When context is missing or insufficient, it searches Tavily, ingests the question topic, then retries once.
 - `GET /articles?limit=10&offset=0` - returns paginated saved articles; the dashboard uses 10, and the all-articles page uses 20.
 - `GET /articles/{article_id}` - returns an article with its source metadata and tags.
@@ -157,6 +158,20 @@ The API is available at:
 - `POST /content/file` - ingests text, PDF, or image uploads, then verifies a provided source URL or finds a candidate source.
 - `POST /content/url` - inspects the URL `Content-Type`, then ingests HTML, text, PDF, or image content directly.
 - `GET /input-assets/{asset_id}/file` - returns a retained raw upload for manual review.
+
+Discovery only returns results from the per-category domain allowlist in
+[`discovery_sources.json`](discovery_sources.json). Edit that versioned file to
+add, remove, or replace trusted publishers without changing application code.
+The non-default categories use a similarly conservative mix: Reuters, MIT
+Technology Review, and MIT Sloan Management Review for product/business;
+Nature, Science, NIST, NIH, and IEEE Spectrum for research; Figma, Adobe,
+Google Design, and AIGA for design; OECD, the European Commission, Pew, and
+Brookings for culture/policy; and UNESCO, OECD, MIT Open Learning, MIT Sloan,
+and the U.S. Department of Education for learning and work.
+
+The Tech & Code allowlist is oriented around engineering practice rather than
+general product announcements: Cloudflare, Netflix, Shopify, Slack, LinkedIn,
+Stripe, CNCF, InfoQ, IEEE Spectrum, ACM Communications, and Martin Fowler.
 
 The CLI calls the shared services directly, so it does not require Uvicorn to be running.
 
@@ -170,7 +185,7 @@ npm install
 npm run dev
 ```
 
-Open the URL printed by Vite, normally `http://127.0.0.1:5173/`. Vite proxies `/watch`, `/ask`, `/articles`, `/content`, and `/input-assets` to FastAPI on port 8000, so both terminals must be running.
+Open the URL printed by Vite, normally `http://127.0.0.1:5173/`. Vite proxies `/watch`, `/discover`, `/ask`, `/articles`, `/content`, and `/input-assets` to FastAPI on port 8000, so both terminals must be running.
 
 The old FastAPI-served `web/` frontend remains in the repository temporarily; the active development frontend is `frontend/`.
 

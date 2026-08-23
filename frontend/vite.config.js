@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/watch": "http://127.0.0.1:8000",
+      "/discover": "http://127.0.0.1:8000",
       "/ask": "http://127.0.0.1:8000",
       "/articles": "http://127.0.0.1:8000",
       "/content": "http://127.0.0.1:8000",

@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, ValidationError
 
 from adapters.content import ContentExtractionError
+from adapters.discovery import discover_topics
 from adapters.store import (
     delete_article,
     count_articles,
@@ -48,6 +49,13 @@ class WatchResponse(BaseModel):
     article_count: int
     chunk_count: int
     articles: list[ArticleResponse]
+
+
+class DiscoveredTopicResponse(BaseModel):
+    category: Category
+    topic: str
+    description: str
+    source_url: str
 
 
 class AskRequest(BaseModel):
@@ -304,6 +312,21 @@ def watch(request: WatchRequest) -> WatchResponse:
         raise HTTPException(
             status_code=503,
             detail="Watch failed. Check Tavily, LM Studio, and the application logs.",
+        ) from exc
+
+
+@app.get("/discover/topics", response_model=list[DiscoveredTopicResponse])
+def discover_recent_topics(
+    categories: list[Category] = Query(
+        default=[Category.TECH_CODE, Category.AI_AUTOMATION]
+    ),
+) -> list[DiscoveredTopicResponse]:
+    try:
+        return discover_topics(categories)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Topic discovery failed. Check Tavily and the application logs.",
         ) from exc
 
 

@@ -1,0 +1,76 @@
+{
+  "ai_automation": {
+    "query": "artificial intelligence automation AI agents",
+    "domains": [
+      "openai.com",
+      "anthropic.com",
+      "deepmind.google",
+      "huggingface.co",
+      "ai.meta.com",
+      "technologyreview.com"
+    ]
+  },
+  "tech_code": {
+    "query": "software engineering developer tools programming",
+    "domains": [
+      "blog.cloudflare.com",
+      "netflixtechblog.com",
+      "shopify.engineering",
+      "slack.engineering",
+      "engineering.linkedin.com",
+      "stripe.dev",
+      "cncf.io",
+      "infoq.com",
+      "spectrum.ieee.org",
+      "cacm.acm.org",
+      "martinfowler.com"
+    ]
+  },
+  "product_business": {
+    "query": "technology product strategy startups SaaS",
+    "domains": [
+      "reuters.com",
+      "technologyreview.com",
+      "sloanreview.mit.edu",
+      "oecd.org"
+    ]
+  },
+  "science_research": {
+    "query": "technology science research computing",
+    "domains": [
+      "nature.com",
+      "science.org",
+      "nist.gov",
+      "nih.gov",
+      "spectrum.ieee.org"
+    ]
+  },
+  "design_creativity": {
+    "query": "design creativity generative media technology",
+    "domains": [
+      "figma.com",
+      "adobe.com",
+      "design.google",
+      "aiga.org"
+    ]
+  },
+  "culture_society": {
+    "query": "technology culture society digital policy",
+    "domains": [
+      "oecd.org",
+      "commission.europa.eu",
+      "pewresearch.org",
+      "brookings.edu"
+    ]
+  },
+  "learning_life": {
+    "query": "technology learning productivity future of work",
+    "domains": [
+      "unesco.org",
+      "oecd.org",
+      "sloanreview.mit.edu",
+      "openlearning.mit.edu",
+      "ed.gov"
+    ]
+  }
+}

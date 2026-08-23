@@ -12,6 +12,7 @@ const CATEGORIES = [
   "culture_society",
   "learning_life",
 ];
+const DISCOVERY_CATEGORIES = CATEGORIES.filter((category) => category !== "inbox");
 
 async function request(path, options = {}) {
   const response = await fetch(path, options);
@@ -260,6 +261,48 @@ function FilePreview({ file, imagePreviewUrl, onClear }) {
   );
 }
 
+function TopicDiscovery({ categories, isLoading, onCategoryChange, onCollect, onRefresh, status, topics }) {
+  return (
+    <section aria-labelledby="discovery-title" className="discovery-panel">
+      <div className="discovery-heading">
+        <div>
+          <p className="section-number">01A / DISCOVER</p>
+          <h2 id="discovery-title">What is hot right now?</h2>
+        </div>
+        <button disabled={isLoading || categories.length === 0} onClick={onRefresh} type="button">
+          {isLoading ? "Refreshing…" : "Refresh topics"}
+        </button>
+      </div>
+      <p className="discovery-copy">Recent news from the past week, limited to the trusted publishers configured for each category. Pick categories, then collect any headline as a new watch.</p>
+      <fieldset className="discovery-categories">
+        <legend className="sr-only">Categories for topic discovery</legend>
+        {DISCOVERY_CATEGORIES.map((category) => (
+          <label key={category}>
+            <input checked={categories.includes(category)} onChange={() => onCategoryChange(category)} type="checkbox" />
+            {formatCategory(category)}
+          </label>
+        ))}
+      </fieldset>
+      {status && <p aria-live="polite" className="status">{status}</p>}
+      {!isLoading && topics.length > 0 && (
+        <div className="discovery-list">
+          {topics.map((suggestion) => (
+            <article className="discovery-topic" key={`${suggestion.category}-${suggestion.source_url}`}>
+              <span className="category-badge" data-category={suggestion.category}>{formatCategory(suggestion.category)}</span>
+              <h3>{suggestion.topic}</h3>
+              {suggestion.description && <p>{suggestion.description}</p>}
+              <div>
+                <button disabled={isLoading} onClick={() => onCollect(suggestion.topic)} type="button">Collect this topic</button>
+                <a href={suggestion.source_url} rel="noreferrer" target="_blank">Read source</a>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function Pagination({ currentPage, total, onNext, onPrevious }) {
   const totalPages = Math.ceil(total / LIBRARY_PAGE_SIZE);
   if (totalPages < 2) return null;
@@ -282,6 +325,10 @@ export default function App() {
   const [topic, setTopic] = useState("");
   const [watchStatus, setWatchStatus] = useState("");
   const [isWatching, setIsWatching] = useState(false);
+  const [discoveryCategories, setDiscoveryCategories] = useState(["tech_code", "ai_automation"]);
+  const [discoveryTopics, setDiscoveryTopics] = useState([]);
+  const [discoveryStatus, setDiscoveryStatus] = useState("");
+  const [isDiscovering, setIsDiscovering] = useState(false);
   const [contentText, setContentText] = useState("");
   const [contentFile, setContentFile] = useState(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
@@ -340,9 +387,8 @@ export default function App() {
     return () => URL.revokeObjectURL(previewUrl);
   }, [contentFile]);
 
-  async function handleWatch(event) {
-    event.preventDefault();
-    const normalizedTopic = topic.trim();
+  async function collectTopic(rawTopic) {
+    const normalizedTopic = rawTopic.trim();
     if (!normalizedTopic) return;
 
     setIsWatching(true);
@@ -361,6 +407,50 @@ export default function App() {
       setIsWatching(false);
     }
   }
+
+  async function handleWatch(event) {
+    event.preventDefault();
+    await collectTopic(topic);
+  }
+
+  async function loadDiscovery(categories = discoveryCategories) {
+    if (categories.length === 0) {
+      setDiscoveryTopics([]);
+      setDiscoveryStatus("Choose at least one category to discover topics.");
+      return;
+    }
+    const params = new URLSearchParams();
+    categories.forEach((category) => params.append("categories", category));
+    setIsDiscovering(true);
+    setDiscoveryStatus("Finding this week’s technical signals…");
+    try {
+      const result = await request(`/discover/topics?${params}`);
+      setDiscoveryTopics(result);
+      setDiscoveryStatus(result.length ? "" : "No recent topics found. Try another category or refresh later.");
+    } catch (error) {
+      setDiscoveryTopics([]);
+      setDiscoveryStatus(`Could not discover topics: ${errorMessage(error)}`);
+    } finally {
+      setIsDiscovering(false);
+    }
+  }
+
+  function handleDiscoveryCategory(category) {
+    setDiscoveryCategories((current) => (
+      current.includes(category)
+        ? current.filter((value) => value !== category)
+        : [...current, category]
+    ));
+  }
+
+  async function handleCollectDiscoveredTopic(topicToCollect) {
+    setTopic(topicToCollect);
+    await collectTopic(topicToCollect);
+  }
+
+  useEffect(() => {
+    if (!showAllArticles) loadDiscovery();
+  }, [showAllArticles]);
 
   async function handleAddContent(event) {
     event.preventDefault();
@@ -500,9 +590,19 @@ export default function App() {
         <p className="intro">Collect the signal, then ask your library what it knows.</p>
       </header>
 
+      {!showAllArticles && <TopicDiscovery
+        categories={discoveryCategories}
+        isLoading={isDiscovering}
+        onCategoryChange={handleDiscoveryCategory}
+        onCollect={handleCollectDiscoveredTopic}
+        onRefresh={() => loadDiscovery()}
+        status={discoveryStatus}
+        topics={discoveryTopics}
+      />}
+
       {!showAllArticles && <section className="watch-panel" aria-labelledby="watch-title">
         <div>
-          <p className="section-number">01 / COLLECT</p>
+          <p className="section-number">01B / COLLECT</p>
           <h1 id="watch-title">Watch a topic.</h1>
         </div>
         <div className="collect-forms">
