@@ -85,6 +85,16 @@ class ProvenanceStoreTest(unittest.TestCase):
         self.assertEqual(len(listed), 1)
         self.assertEqual(listed[0]["title"], "Article 1")
 
+    def test_get_or_create_source_reuses_the_canonical_url(self) -> None:
+        source = Source(name="example.com", url="https://example.com")
+
+        first = store.get_or_create_source(source)
+        second = store.get_or_create_source(
+            Source(name="Example", url="https://example.com")
+        )
+
+        self.assertEqual(first.id, second.id)
+
     def test_legacy_migration_preserves_articles(self) -> None:
         legacy_schema = store.SCHEMA.replace(
             "source_id TEXT REFERENCES sources (id),",

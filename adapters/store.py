@@ -263,6 +263,47 @@ def save_source(source: Source) -> None:
         )
 
 
+def get_or_create_source(source: Source) -> Source:
+    """Reuse one publisher Source per canonical source URL."""
+    source_url = str(source.url)
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT id, name, url, type, credibility_score, source_summary
+            FROM sources
+            WHERE url = ?
+            LIMIT 1
+            """,
+            (source_url,),
+        ).fetchone()
+        if row is not None:
+            return Source(
+                id=row["id"],
+                name=row["name"],
+                url=row["url"],
+                type=row["type"],
+                credibility_score=row["credibility_score"],
+                source_summary=row["source_summary"],
+            )
+
+        conn.execute(
+            """
+            INSERT INTO sources (id, name, url, type, credibility_score, source_summary)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                source.id,
+                source.name,
+                source_url,
+                source.type.value,
+                source.credibility_score,
+                source.source_summary,
+            ),
+        )
+    return source
+
+
 def save_article(article: Article) -> str:
     article_url = str(article.url) if article.url is not None else None
 

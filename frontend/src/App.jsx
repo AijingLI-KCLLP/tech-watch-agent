@@ -64,6 +64,38 @@ function isAllArticlesPage() {
   return window.location.hash === "#/articles";
 }
 
+function clipboardFile(event) {
+  const file = event.clipboardData.files[0]
+    || [...event.clipboardData.items]
+      .find((item) => item.kind === "file")
+      ?.getAsFile();
+  if (!file) return null;
+  if (file.name) return file;
+
+  const extension = file.type.split("/")[1] || "bin";
+  return new File([file], `pasted-file.${extension}`, { type: file.type });
+}
+
+function FilePreview({ file, imagePreviewUrl, onClear }) {
+  if (!file) return null;
+
+  const extension = file.name.split(".").pop()?.toUpperCase() || "FILE";
+  return (
+    <div className="file-preview">
+      {imagePreviewUrl ? (
+        <img alt={`Preview of ${file.name}`} src={imagePreviewUrl} />
+      ) : (
+        <div aria-hidden="true" className="file-preview-type">{extension}</div>
+      )}
+      <div>
+        <p>{file.name}</p>
+        <span>{file.type || "Unknown type"}</span>
+      </div>
+      <button aria-label={`Remove ${file.name}`} onClick={onClear} type="button">Remove</button>
+    </div>
+  );
+}
+
 function Pagination({ currentPage, total, onNext, onPrevious }) {
   const totalPages = Math.ceil(total / LIBRARY_PAGE_SIZE);
   if (totalPages < 2) return null;
@@ -86,9 +118,9 @@ export default function App() {
   const [topic, setTopic] = useState("");
   const [watchStatus, setWatchStatus] = useState("");
   const [isWatching, setIsWatching] = useState(false);
-  const [contentMode, setContentMode] = useState("text");
   const [contentText, setContentText] = useState("");
   const [contentFile, setContentFile] = useState(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState("");
   const [contentTitle, setContentTitle] = useState("");
   const [contentSourceUrl, setContentSourceUrl] = useState("");
   const [contentStatus, setContentStatus] = useState("");
@@ -130,6 +162,17 @@ export default function App() {
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
+  useEffect(() => {
+    if (!contentFile?.type.startsWith("image/")) {
+      setImagePreviewUrl("");
+      return undefined;
+    }
+
+    const previewUrl = URL.createObjectURL(contentFile);
+    setImagePreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [contentFile]);
+
   async function handleWatch(event) {
     event.preventDefault();
     const normalizedTopic = topic.trim();
@@ -161,11 +204,7 @@ export default function App() {
     setContentStatus("Transcribing, normalizing, embedding, and storing...");
     try {
       let result;
-      if (contentMode === "file") {
-        if (!contentFile) {
-          setContentStatus("Choose a text, PDF, or image file first.");
-          return;
-        }
+      if (contentFile) {
         const formData = new FormData();
         formData.append("file", contentFile);
         if (title) formData.append("title", title);
@@ -187,7 +226,9 @@ export default function App() {
           }),
         });
       }
-      setContentStatus(`Saved ${result.article.title} with ${result.chunk_count} chunks.`);
+      setContentStatus(
+        `Saved ${result.article.title} with ${result.chunk_count} chunks. Source: ${result.source_verification_status}.`,
+      );
       setContentText("");
       setContentFile(null);
       setContentTitle("");
@@ -199,6 +240,20 @@ export default function App() {
     } finally {
       setIsAddingContent(false);
     }
+  }
+
+  function handleContentPaste(event) {
+    const file = clipboardFile(event);
+    if (!file) return;
+
+    event.preventDefault();
+    setContentFile(file);
+    setContentStatus(`Pasted ${file.name}. Ready to add to the library.`);
+  }
+
+  function clearContentFile() {
+    setContentFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function handleAsk(event) {
@@ -266,26 +321,26 @@ export default function App() {
 
           <form className="content-form" onSubmit={handleAddContent}>
             <p className="content-form-title">Or add content</p>
-            <div className="content-mode" aria-label="Content input type">
-              <button className={contentMode === "text" ? "mode-button active" : "mode-button"} onClick={() => setContentMode("text")} type="button">Paste text</button>
-              <button className={contentMode === "file" ? "mode-button active" : "mode-button"} onClick={() => setContentMode("file")} type="button">Upload file</button>
-            </div>
             <label className="sr-only" htmlFor="content-title">Title</label>
             <input id="content-title" maxLength="500" onChange={(event) => setContentTitle(event.target.value)} placeholder="Title (optional)" value={contentTitle} />
             <label className="sr-only" htmlFor="content-source-url">Source URL</label>
             <input id="content-source-url" onChange={(event) => setContentSourceUrl(event.target.value)} placeholder="Original source URL (optional)" type="url" value={contentSourceUrl} />
-            {contentMode === "text" ? (
-              <>
-                <label className="sr-only" htmlFor="content-text">Text to add</label>
-                <textarea id="content-text" maxLength="100000" onChange={(event) => setContentText(event.target.value)} placeholder="Paste a note, article, or transcript..." required rows="4" value={contentText} />
-              </>
-            ) : (
-              <div className="file-picker">
-                <label htmlFor="content-file">Choose text, PDF, or image</label>
-                <input accept="text/*,.md,.markdown,.html,.htm,.csv,application/pdf,.pdf,image/*" id="content-file" onChange={(event) => setContentFile(event.target.files?.[0] || null)} ref={fileInputRef} required type="file" />
-                <span>{contentFile ? contentFile.name : "No file selected"}</span>
+            <div className="content-composer" onPaste={handleContentPaste}>
+              <label className="sr-only" htmlFor="content-text">Text to add</label>
+              <textarea disabled={Boolean(contentFile)} id="content-text" maxLength="100000" onChange={(event) => setContentText(event.target.value)} placeholder={contentFile ? "Remove the attached file to paste text." : "Paste a note, article, transcript, or image..."} rows="4" value={contentText} />
+              <div className="composer-footer">
+                <label className="attach-file" htmlFor="content-file">
+                  Attach file
+                  <input accept="text/*,.md,.markdown,.html,.htm,.csv,application/pdf,.pdf,image/*" id="content-file" onChange={(event) => setContentFile(event.target.files?.[0] || null)} ref={fileInputRef} type="file" />
+                </label>
+                <span>Paste text, or paste an image/file with Cmd/Ctrl+V.</span>
               </div>
-            )}
+            </div>
+            <FilePreview
+              file={contentFile}
+              imagePreviewUrl={imagePreviewUrl}
+              onClear={clearContentFile}
+            />
             <button disabled={isAddingContent} type="submit">{isAddingContent ? "Adding..." : "Add to library"}</button>
             <p className="status" aria-live="polite">{contentStatus}</p>
           </form>

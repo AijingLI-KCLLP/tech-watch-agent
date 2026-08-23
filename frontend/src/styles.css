@@ -133,50 +133,111 @@ h2 {
   font-size: 1.25rem;
 }
 
-.content-mode {
-  display: flex;
-  gap: 0.45rem;
-}
-
-.mode-button,
 .content-form > button {
   width: fit-content;
   padding: 0.55rem 0.75rem;
   font-size: 0.72rem;
 }
 
-.mode-button {
-  color: var(--ink);
-  background: transparent;
-}
-
-.mode-button.active {
-  color: var(--paper);
-  background: var(--ink);
-}
-
-.content-form textarea {
-  min-height: 7rem;
-}
-
-.file-picker {
-  display: grid;
-  gap: 0.35rem;
-  padding: 0.7rem;
+.content-composer {
+  overflow: hidden;
   border: 1px solid var(--ink);
-  background: rgba(255, 255, 255, 0.4);
-  font-size: 0.72rem;
+  background:
+    linear-gradient(135deg, rgba(201, 230, 230, 0.35), transparent 70%),
+    rgba(255, 255, 255, 0.45);
 }
 
-.file-picker input {
-  padding: 0;
+.content-composer:focus-within {
+  outline: 3px solid rgba(216, 91, 66, 0.35);
+  outline-offset: 2px;
+}
+
+.content-composer textarea {
+  min-height: 7rem;
   border: 0;
   background: transparent;
 }
 
-.file-picker span {
+.composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.composer-footer span,
+.file-preview span {
   color: var(--muted);
-  overflow-wrap: anywhere;
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.attach-file {
+  display: inline-block;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--ink);
+  color: var(--paper);
+  background: var(--ink);
+  cursor: pointer;
+  font-size: 0.65rem;
+}
+
+.attach-file:hover {
+  background: var(--accent-dark);
+}
+
+.attach-file input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.file-preview p {
+  margin: 0;
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 1.05rem;
+}
+
+.file-preview {
+  display: grid;
+  grid-template-columns: 3.6rem minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.file-preview img,
+.file-preview-type {
+  width: 3.6rem;
+  height: 3.6rem;
+  object-fit: cover;
+}
+
+.file-preview-type {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ink);
+  background: var(--paper-deep);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+}
+
+.file-preview button {
+  padding: 0.35rem 0.5rem;
+  color: var(--ink);
+  background: transparent;
+  font-size: 0.62rem;
+}
+
+.file-preview button:hover:not(:disabled) {
+  color: var(--paper);
 }
 
 .input-row {

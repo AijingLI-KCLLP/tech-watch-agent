@@ -21,11 +21,16 @@ flowchart LR
 
         D --> N[transcribe / normalize]
         E --> G{file type}
-        G -- text --> N
+        G -- text --> AF[transcribe / normalize]
         G -- pdf --> H[extract text]
         G -- image --> I[OCR]
-        H --> N
-        I --> N
+        H --> AF
+        I --> AF
+        AF --> AG{source URL provided?}
+        AG -- yes --> AH[verify source]
+        AG -- no --> AI[find source]
+        AH --> AJ[add Source if verified]
+        AI --> AJ
 
         F --> J[inspect content type]
         J -- text/html --> K[fetch direct content]
@@ -39,6 +44,7 @@ flowchart LR
 
     B --> O[qualify]
     N --> O
+    AJ --> O
 
     O --> P[tag]
     P --> Q[categorize]
@@ -133,7 +139,7 @@ The API is available at:
 - `PATCH /articles/{article_id}` - updates reviewable metadata: `title`, `summary`, `category`, and `tags`.
 - `DELETE /articles/{article_id}` - permanently removes an article, its tag links, and its retrieval vectors.
 - `POST /content/text` - ingests pasted text through `transcribe / normalize`.
-- `POST /content/file` - ingests text, PDF, or image uploads through the matching extraction path.
+- `POST /content/file` - ingests text, PDF, or image uploads, then verifies a provided source URL or finds a candidate source.
 - `GET /input-assets/{asset_id}/file` - returns a retained raw upload for manual review.
 
 The CLI calls the shared services directly, so it does not require Uvicorn to be running.
@@ -231,7 +237,7 @@ tech_watch_agent/
 
 ### Enums
 
-- `SourceType`: `blog`, `article`, `video`, `podcast`, `social`, `other`
+- `SourceType`: `blog`, `article`, `video`, `podcast`, `social`, `personal_note`, `other`
 - `Category`: `unsorted`, `pro`, `perso`
 - `OriginalType`:`text`,`image`,`pdf`
 - `SourceVerificationStatus`: `verified`, `plausible`, `unverified`, `mismatch`
@@ -243,7 +249,7 @@ tech_watch_agent/
 | Field | Type | Required | Notes                                                                               |
 |---|---|---|-------------------------------------------------------------------------------------|
 | `id` | `str` | Yes | Unique identifier for the source                                                    |
-| `name` | `str` | Yes | Name of the source, if type is social account, it should be plateform_id, ig X_haha |
+| `name` | `str` | Yes | Publisher name, social account, or `Personal note` for an upload without a verified external source |
 | `url` | `HttpUrl` | Yes | Canonical URL of the source                                                         |
 | `type` | `SourceType` | Yes | Type of source such as article site, blog, video, or social account                 |
 | `credibility_score` | `float \| None` | No | Credibility score assigned to the source                                            |

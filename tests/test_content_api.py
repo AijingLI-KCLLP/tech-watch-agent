@@ -16,6 +16,7 @@ class ContentApiTest(unittest.TestCase):
             "article": {"id": "article-1", "title": "A note", "url": None},
             "input_asset_id": "asset-1",
             "chunk_count": 2,
+            "source_verification_status": "unverified",
         }
 
         response = self.client.post(
@@ -41,6 +42,7 @@ class ContentApiTest(unittest.TestCase):
             "article": {"id": "article-2", "title": "Read me", "url": None},
             "input_asset_id": "asset-2",
             "chunk_count": 1,
+            "source_verification_status": "verified",
         }
 
         response = self.client.post(

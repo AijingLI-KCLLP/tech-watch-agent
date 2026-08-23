@@ -6,10 +6,22 @@ from adapters.content import (
     persist_upload,
     sha256_bytes,
 )
-from adapters.store import init_db, save_input_asset
+from adapters.source_verification import (
+    SourceVerification,
+    find_source,
+    personal_note_source,
+    verify_provided_source,
+)
+from adapters.store import get_or_create_source, init_db, save_input_asset
 from core.content_ingest_graph import build_content_ingest_graph
 from core.ingest_graph import build_ingest_graph
-from core.models import Article, InputAsset, OriginalType
+from core.models import (
+    Article,
+    InputAsset,
+    OriginalType,
+    Source,
+    SourceVerificationStatus,
+)
 from core.retrieve_graph import build_retrieve_graph
 
 class WatchResults(TypedDict):
@@ -27,6 +39,7 @@ class AddContentResult(TypedDict):
     article: dict[str, str | None]
     input_asset_id: str
     chunk_count: int
+    source_verification_status: str
 
 
 def _title_from_text(text: str, fallback: str) -> str:
@@ -34,22 +47,45 @@ def _title_from_text(text: str, fallback: str) -> str:
     return first_line.strip()[:500]
 
 
+def _article_title(text: str, title: str | None) -> str:
+    return title.strip()[:500] if title and title.strip() else _title_from_text(
+        text,
+        "Untitled content",
+    )
+
+
 def _ingest_normalized_content(
     *,
     normalized_text: str,
     input_asset: InputAsset,
     title: str | None,
+    verification: SourceVerification | None = None,
+    fallback_source: Source | None = None,
 ) -> AddContentResult:
     init_db()
+    source: Source | None = None
+    if verification is not None:
+        input_asset.source_verification_status = verification.status
+        input_asset.source_verification_reason = verification.reason
+        input_asset.source_verification_confidence = verification.confidence
+    has_verified_source = (
+        verification is not None
+        and verification.status is SourceVerificationStatus.VERIFIED
+        and verification.source is not None
+    )
+    if has_verified_source:
+        source = get_or_create_source(verification.source)
+        input_asset.verified_source_id = source.id
+    elif fallback_source is not None:
+        source = get_or_create_source(fallback_source)
     save_input_asset(input_asset)
 
     article = Article(
-        title=title.strip()[:500] if title and title.strip() else _title_from_text(
-            normalized_text,
-            "Untitled content",
-        ),
+        title=_article_title(normalized_text, title),
         content=normalized_text,
         original_type=input_asset.original_type,
+        source_id=source.id if source is not None else None,
+        url=verification.article_url if has_verified_source else None,
     )
     graph = build_content_ingest_graph()
     final = graph.invoke({"article": article, "input_asset": input_asset})
@@ -58,10 +94,11 @@ def _ingest_normalized_content(
         "article": {
             "id": final["persisted_article_id"],
             "title": article.title,
-            "url": None,
+            "url": str(article.url) if article.url is not None else None,
         },
         "input_asset_id": input_asset.id,
         "chunk_count": len(final["chunks"]),
+        "source_verification_status": input_asset.source_verification_status.value,
     }
 
 
@@ -98,6 +135,22 @@ def add_uploaded_file(
         filename,
         mime_type,
     )
+    article_title = _article_title(extracted_text, title)
+    verification = (
+        verify_provided_source(
+            input_text=extracted_text,
+            input_title=article_title,
+            source_url=provided_source_url,
+        )
+        if provided_source_url
+        else find_source(input_text=extracted_text, input_title=article_title)
+    )
+    fallback_source = (
+        personal_note_source()
+        if provided_source_url is None
+        and verification.status is not SourceVerificationStatus.VERIFIED
+        else None
+    )
     digest = sha256_bytes(content)
     input_asset = InputAsset(
         original_type=original_type,
@@ -107,11 +160,16 @@ def add_uploaded_file(
         sha256=digest,
         extracted_text=extracted_text,
         provided_source_url=provided_source_url,
+        source_verification_status=verification.status,
+        source_verification_reason=verification.reason,
+        source_verification_confidence=verification.confidence,
     )
     return _ingest_normalized_content(
         normalized_text=extracted_text,
         input_asset=input_asset,
         title=title,
+        verification=verification,
+        fallback_source=fallback_source,
     )
 
 def watch_topic(topic: str) -> WatchResults:

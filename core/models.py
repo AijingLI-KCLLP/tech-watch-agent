@@ -17,6 +17,7 @@ class SourceType(str, Enum):
     VIDEO = "video"
     PODCAST = "podcast"
     SOCIAL = "social"
+    PERSONAL_NOTE = "personal_note"
     OTHER = "other"
 
 class Category(str, Enum):
@@ -53,8 +54,6 @@ class Article(BaseModel):
     title:str
     content:str
     fetched_at:datetime = Field(default_factory=_now)
-
-    # later...
     category:Category=Category.UNSORTED
     n_tags:int = 0
     summary:str | None = None

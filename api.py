@@ -63,6 +63,7 @@ class AddContentResponse(BaseModel):
     article: ArticleResponse
     input_asset_id: str
     chunk_count: int
+    source_verification_status: SourceVerificationStatus
 
 
 class ArticleListItemResponse(BaseModel):
