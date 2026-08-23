@@ -4,6 +4,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from api import app
+from services import article_review_service
 
 
 class ContentApiTest(unittest.TestCase):
@@ -111,6 +112,76 @@ class ContentApiTest(unittest.TestCase):
         self.assertEqual(response.json()["items"][0]["title"], "Newest article")
         list_articles.assert_called_once_with(limit=20, offset=20)
         count_articles.assert_called_once_with()
+        init_db.assert_called_once_with()
+
+
+class ArticleReviewServiceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = TestClient(app)
+
+    @patch("services.article_review_service.update_article")
+    @patch("adapters.store._chroma")
+    @patch("services.article_review_service.save_chunks")
+    @patch("services.article_review_service.embed", return_value=[[0.1, 0.2]])
+    @patch(
+        "services.article_review_service.get_article_detail",
+        return_value={"id": "article-4"},
+    )
+    def test_content_edit_replaces_retrieval_chunks(
+        self, get_detail, embed, save_chunks, chroma, update_article
+    ) -> None:
+        update_article.return_value = {"id": "article-4", "content": "Edited text."}
+
+        result = article_review_service.edit_article(
+            "article-4", content="Edited text."
+        )
+
+        self.assertEqual(result["content"], "Edited text.")
+        chroma.return_value.delete.assert_called_once_with(where={"article_id": "article-4"})
+        save_chunks.assert_called_once()
+        chunks, embeddings = save_chunks.call_args.args
+        self.assertEqual([chunk.text for chunk in chunks], ["Edited text."])
+        self.assertEqual(embeddings, [[0.1, 0.2]])
+        update_article.assert_called_once_with("article-4", content="Edited text.")
+        get_detail.assert_called_once_with("article-4")
+
+    @patch("api.init_db")
+    @patch("api.update_article")
+    def test_article_patch_accepts_normalized_content(self, update_article, init_db) -> None:
+        update_article.return_value = {
+            "id": "article-4",
+            "title": "Reviewed article",
+            "url": None,
+            "content": "Edited normalized content.",
+            "fetched_at": "2026-01-01T00:00:00+00:00",
+            "category": "tech_code",
+            "n_tags": 1,
+            "summary": None,
+            "original_type": "text",
+            "source": None,
+            "tags": ["reviewed"],
+            "input_assets": [],
+        }
+
+        response = self.client.patch(
+            "/articles/article-4",
+            json={
+                "title": "Reviewed article",
+                "content": "Edited normalized content.",
+                "category": "tech_code",
+                "tags": ["reviewed"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["content"], "Edited normalized content.")
+        update_article.assert_called_once_with(
+            "article-4",
+            title="Reviewed article",
+            content="Edited normalized content.",
+            category="tech_code",
+            tags=["reviewed"],
+        )
         init_db.assert_called_once_with()
 
 

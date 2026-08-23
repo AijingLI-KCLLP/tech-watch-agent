@@ -6,7 +6,9 @@ metadata, and answering questions with source citations (RAG).
 > **Status — active development.** Search and manual-content ingest,
 > source qualification, tags, categories, the REST API, and the React library
 > UI are available. Generated metadata is advisory and can be edited through
-> `PATCH /articles/{article_id}`.
+> `PATCH /articles/{article_id}`. The library's **Manual edit** screen also
+> shows the retained raw input and source-verification result beside the
+> editable normalized article.
 
 ## Workflow
 
@@ -149,7 +151,7 @@ The API is available at:
 - `POST /ask` - retrieves relevant chunks and answers from them. When context is missing or insufficient, it searches Tavily, ingests the question topic, then retries once.
 - `GET /articles?limit=10&offset=0` - returns paginated saved articles; the dashboard uses 10, and the all-articles page uses 20.
 - `GET /articles/{article_id}` - returns an article with its source metadata and tags.
-- `PATCH /articles/{article_id}` - updates reviewable metadata: `title`, `summary`, `category`, and `tags`.
+- `PATCH /articles/{article_id}` - updates `title`, normalized `content`, `summary`, `category`, and `tags`. Content edits replace the article's retrieval chunks.
 - `DELETE /articles/{article_id}` - permanently removes an article, its tag links, and its retrieval vectors.
 - `POST /content/text` - ingests pasted text through `transcribe / normalize`.
 - `POST /content/file` - ingests text, PDF, or image uploads, then verifies a provided source URL or finds a candidate source.

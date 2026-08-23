@@ -785,6 +785,7 @@ def update_article(
     article_id: str,
     *,
     title: str | object = _UNSET,
+    content: str | object = _UNSET,
     summary: str | None | object = _UNSET,
     category: str | object = _UNSET,
     tags: list[str] | None | object = _UNSET,
@@ -799,7 +800,12 @@ def update_article(
 
         columns: list[str] = []
         values: list[str | None] = []
-        for column, value in (("title", title), ("summary", summary), ("category", category)):
+        for column, value in (
+            ("title", title),
+            ("content", content),
+            ("summary", summary),
+            ("category", category),
+        ):
             if value is not _UNSET:
                 columns.append(f"{column} = ?")
                 values.append(value)

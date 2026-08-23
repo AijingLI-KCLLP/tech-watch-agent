@@ -441,6 +441,14 @@ button:hover:not(:disabled) {
   font-size: 0.65rem;
 }
 
+.edit-button,
+.close-button {
+  padding: 0.35rem 0.55rem;
+  color: var(--ink);
+  background: transparent;
+  font-size: 0.65rem;
+}
+
 .raw-file-link {
   color: var(--accent-dark);
   font-size: 0.65rem;
@@ -450,6 +458,149 @@ button:hover:not(:disabled) {
 
 .delete-button:hover:not(:disabled) {
   color: var(--paper);
+}
+
+.edit-button:hover:not(:disabled),
+.close-button:hover:not(:disabled) {
+  color: var(--paper);
+}
+
+.editor-backdrop {
+  position: fixed;
+  z-index: 10;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(29, 27, 24, 0.5);
+}
+
+.article-editor {
+  width: min(52rem, 100%);
+  max-height: min(90vh, 58rem);
+  overflow: auto;
+  padding: 1.5rem;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  box-shadow: 0.5rem 0.5rem 0 var(--ink);
+}
+
+.editor-heading,
+.editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.editor-heading {
+  margin-bottom: 1.25rem;
+}
+
+.editor-form {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.editor-form label,
+.provenance-panel h3 {
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+
+.editor-form textarea {
+  min-height: 6rem;
+}
+
+.editor-form #edit-content {
+  min-height: 18rem;
+  line-height: 1.5;
+}
+
+.editor-fields {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.6fr) minmax(0, 1.4fr);
+  gap: 0.8rem;
+}
+
+.editor-fields > div {
+  display: grid;
+  gap: 0.45rem;
+}
+
+select {
+  width: 100%;
+  min-height: 2.8rem;
+  padding: 0.6rem;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.55);
+  font: inherit;
+}
+
+.provenance-panel {
+  margin-top: 0.8rem;
+  padding: 0.9rem;
+  border: 1px dashed var(--line);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.provenance-panel h3,
+.provenance-panel p {
+  margin: 0 0 0.45rem;
+}
+
+.provenance-panel > p,
+.provenance-record {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.provenance-record + .provenance-record {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+
+.provenance-record strong {
+  color: var(--ink);
+  text-transform: capitalize;
+}
+
+.provenance-record a {
+  color: var(--accent-dark);
+}
+
+.provenance-record pre {
+  max-height: 12rem;
+  overflow: auto;
+  margin: 0.45rem 0;
+  padding: 0.6rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.55);
+  font: inherit;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.editor-actions {
+  justify-content: end;
+  margin-top: 0.7rem;
+}
+
+.editor-actions > button:last-child {
+  padding: 0.55rem 0.75rem;
+}
+
+.editor-error {
+  padding: 0.65rem;
+  border: 1px solid var(--accent-dark);
+  color: var(--accent-dark);
+  font-size: 0.75rem;
 }
 
 .empty-state {
@@ -626,6 +777,15 @@ button:hover:not(:disabled) {
 
   .article-row {
     grid-template-columns: 1fr;
+  }
+
+  .editor-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .article-editor {
+    padding: 1rem;
+    box-shadow: 0.25rem 0.25rem 0 var(--ink);
   }
 
   .article-heading {

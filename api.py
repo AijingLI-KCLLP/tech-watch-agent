@@ -13,7 +13,6 @@ from adapters.store import (
     get_input_asset_file,
     init_db,
     list_articles,
-    update_article,
 )
 from config import MAX_UPLOAD_BYTES, ROOT, UPLOADS_DIR
 from core.models import Category, OriginalType, SourceVerificationStatus
@@ -24,6 +23,7 @@ from services.agent_service import (
     ask_question,
     watch_topic,
 )
+from services.article_review_service import edit_article as update_article
 
 app = FastAPI(
     title="Tech Watch Agent API",
@@ -141,6 +141,7 @@ class ArticleDetailResponse(BaseModel):
 
 class ArticleUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=500)
+    content: str | None = Field(default=None, min_length=1, max_length=100_000)
     summary: str | None = Field(default=None, max_length=5_000)
     category: Category | None = None
     tags: list[str] | None = Field(default=None, max_length=30)
@@ -276,7 +277,7 @@ def edit_article(article_id: str, request: ArticleUpdateRequest) -> ArticleDetai
     updates = request.model_dump(exclude_unset=True, mode="json")
     if not updates:
         raise HTTPException(status_code=422, detail="Provide at least one field to update.")
-    for field in ("title", "category"):
+    for field in ("title", "content", "category"):
         if field in updates and updates[field] is None:
             raise HTTPException(status_code=422, detail=f"{field} cannot be null.")
 

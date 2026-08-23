@@ -2,6 +2,16 @@ import { useEffect, useRef, useState } from "react";
 
 const DASHBOARD_ARTICLE_LIMIT = 10;
 const LIBRARY_PAGE_SIZE = 20;
+const CATEGORIES = [
+  "inbox",
+  "ai_automation",
+  "tech_code",
+  "product_business",
+  "science_research",
+  "design_creativity",
+  "culture_society",
+  "learning_life",
+];
 
 async function request(path, options = {}) {
   const response = await fetch(path, options);
@@ -24,7 +34,7 @@ function formatCategory(category) {
   return (category || "inbox").replaceAll("_", " ");
 }
 
-function ArticleList({ articles, deletingArticleId, error, onDelete }) {
+function ArticleList({ articles, deletingArticleId, error, onDelete, onEdit }) {
   if (error) {
     return <p className="empty-state">Could not load articles: {error}</p>;
   }
@@ -63,6 +73,7 @@ function ArticleList({ articles, deletingArticleId, error, onDelete }) {
         {article.raw_file_url && (
           <a className="raw-file-link" href={article.raw_file_url} rel="noreferrer" target="_blank">Raw image</a>
         )}
+        <button className="edit-button" onClick={() => onEdit(article.id)} type="button">Manual edit</button>
         <button
           className="delete-button"
           disabled={deletingArticleId === article.id}
@@ -74,6 +85,143 @@ function ArticleList({ articles, deletingArticleId, error, onDelete }) {
       </div>
     </article>
   ));
+}
+
+function sourceVerificationLabel(status) {
+  return (status || "not recorded").replaceAll("_", " ");
+}
+
+function ArticleEditor({ articleId, onClose, onSaved }) {
+  const [article, setArticle] = useState(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    setArticle(null);
+    setForm(null);
+    setError("");
+    request(`/articles/${articleId}`)
+      .then((result) => {
+        if (!active) return;
+        setArticle(result);
+        setForm({
+          title: result.title,
+          content: result.content,
+          summary: result.summary || "",
+          category: result.category,
+          tags: result.tags.join(", "),
+        });
+      })
+      .catch((loadError) => active && setError(errorMessage(loadError)));
+    return () => { active = false; };
+  }, [articleId]);
+
+  function setField(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!form) return;
+
+    setSaving(true);
+    setError("");
+    try {
+      const updated = await request(`/articles/${articleId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: form.title.trim(),
+          content: form.content.trim(),
+          summary: form.summary.trim() || null,
+          category: form.category,
+          tags: form.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+        }),
+      });
+      setArticle(updated);
+      await onSaved();
+      onClose();
+    } catch (saveError) {
+      setError(errorMessage(saveError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="editor-backdrop" onMouseDown={onClose}>
+      <section aria-labelledby="editor-title" aria-modal="true" className="article-editor" onMouseDown={(event) => event.stopPropagation()} role="dialog">
+        <div className="editor-heading">
+          <div>
+            <p className="section-number">ARTICLE REVIEW</p>
+            <h2 id="editor-title">Manual edit</h2>
+          </div>
+          <button aria-label="Close manual edit" className="close-button" onClick={onClose} type="button">Close</button>
+        </div>
+        {error && <p className="editor-error" role="alert">{error}</p>}
+        {!article || !form ? (
+          <p className="empty-state">Loading article…</p>
+        ) : (
+          <form className="editor-form" onSubmit={handleSubmit}>
+            <label htmlFor="edit-title">Title</label>
+            <input id="edit-title" maxLength="500" onChange={(event) => setField("title", event.target.value)} required value={form.title} />
+
+            <label htmlFor="edit-content">Normalized content</label>
+            <textarea id="edit-content" maxLength="100000" minLength="1" onChange={(event) => setField("content", event.target.value)} required rows="14" value={form.content} />
+
+            <div className="editor-fields">
+              <div>
+                <label htmlFor="edit-category">Category</label>
+                <select id="edit-category" onChange={(event) => setField("category", event.target.value)} value={form.category}>
+                  {CATEGORIES.map((category) => <option key={category} value={category}>{formatCategory(category)}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="edit-tags">Tags</label>
+                <input id="edit-tags" onChange={(event) => setField("tags", event.target.value)} placeholder="ai, agents, research" value={form.tags} />
+              </div>
+            </div>
+
+            <label htmlFor="edit-summary">Summary</label>
+            <textarea id="edit-summary" maxLength="5000" onChange={(event) => setField("summary", event.target.value)} rows="3" value={form.summary} />
+
+            <section aria-labelledby="verification-title" className="provenance-panel">
+              <h3 id="verification-title">Source verification</h3>
+              {article.input_assets.length === 0 ? (
+                <p>No provenance record was retained for this article.</p>
+              ) : article.input_assets.map((asset) => (
+                <div className="provenance-record" key={asset.id}>
+                  <p><strong>{sourceVerificationLabel(asset.source_verification_status)}</strong>{asset.source_verification_confidence !== null && ` · ${Math.round(asset.source_verification_confidence * 100)}% confidence`}</p>
+                  {asset.source_verification_reason && <p>{asset.source_verification_reason}</p>}
+                  {asset.provided_source_url && <a href={asset.provided_source_url} rel="noreferrer" target="_blank">Provided source URL</a>}
+                </div>
+              ))}
+            </section>
+
+            <section aria-labelledby="raw-input-title" className="provenance-panel">
+              <h3 id="raw-input-title">Original raw input</h3>
+              {article.input_assets.length === 0 ? (
+                <p>No original input was retained for this article.</p>
+              ) : article.input_assets.map((asset) => (
+                <div className="provenance-record" key={asset.id}>
+                  <p>{asset.input_filename || `${asset.original_type} input`}</p>
+                  {asset.raw_text ? <pre>{asset.raw_text}</pre> : <p>Raw text is unavailable for this uploaded file.</p>}
+                  {asset.storage_path && <a href={`/input-assets/${asset.id}/file`} rel="noreferrer" target="_blank">Open original file</a>}
+                </div>
+              ))}
+            </section>
+
+            <div className="editor-actions">
+              <button className="close-button" onClick={onClose} type="button">Cancel</button>
+              <button disabled={saving} type="submit">{saving ? "Saving…" : "Save article"}</button>
+            </div>
+          </form>
+        )}
+      </section>
+    </div>
+  );
 }
 
 function isAllArticlesPage() {
@@ -144,6 +292,7 @@ export default function App() {
   const [isAddingContent, setIsAddingContent] = useState(false);
   const [isAddingUrl, setIsAddingUrl] = useState(false);
   const [deletingArticleId, setDeletingArticleId] = useState("");
+  const [editingArticleId, setEditingArticleId] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("Ask a question to begin.");
   const [isAsking, setIsAsking] = useState(false);
@@ -425,6 +574,7 @@ export default function App() {
             deletingArticleId={deletingArticleId}
             error={articleError}
             onDelete={handleDelete}
+            onEdit={setEditingArticleId}
           />
         </div>
         {showAllArticles && (
@@ -455,6 +605,13 @@ export default function App() {
           </div>
         </div>
       </section>}
+      {editingArticleId && (
+        <ArticleEditor
+          articleId={editingArticleId}
+          onClose={() => setEditingArticleId("")}
+          onSaved={loadArticles}
+        />
+      )}
     </main>
   );
 }

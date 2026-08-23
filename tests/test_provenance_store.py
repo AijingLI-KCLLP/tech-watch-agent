@@ -85,6 +85,25 @@ class ProvenanceStoreTest(unittest.TestCase):
         self.assertEqual(len(listed), 1)
         self.assertEqual(listed[0]["title"], "Article 1")
 
+    def test_manual_edit_updates_normalized_content_and_metadata(self) -> None:
+        article_id = store.save_article(
+            Article(title="Draft", content="Original normalized content.")
+        )
+
+        updated = store.update_article(
+            article_id,
+            title="Reviewed draft",
+            content="Corrected normalized content.",
+            category=Category.TECH_CODE.value,
+            tags=["reviewed", "technology"],
+        )
+
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated["title"], "Reviewed draft")
+        self.assertEqual(updated["content"], "Corrected normalized content.")
+        self.assertEqual(updated["category"], Category.TECH_CODE.value)
+        self.assertEqual(updated["tags"], ["reviewed", "technology"])
+
     def test_categorization_queries_inbox_by_default(self) -> None:
         inbox_id = store.save_article(Article(title="Inbox", content="Content."))
         reviewed_id = store.save_article(
