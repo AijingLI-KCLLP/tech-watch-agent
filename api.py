@@ -1,11 +1,18 @@
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from adapters.store import init_db, list_articles
+from adapters.store import (
+    delete_article,
+    get_article_detail,
+    init_db,
+    list_articles,
+    update_article,
+)
+from core.models import Category
 from services.agent_service import ask_question, watch_topic
 
 app = FastAPI(
@@ -52,6 +59,36 @@ class ArticleListItemResponse(BaseModel):
     source_name: str | None
 
 
+class SourceDetailResponse(BaseModel):
+    id: str
+    name: str
+    url: str
+    type: str
+    credibility_score: float | None
+    source_summary: str | None
+
+
+class ArticleDetailResponse(BaseModel):
+    id: str
+    title: str
+    url: str | None
+    content: str
+    fetched_at: str
+    category: Category
+    n_tags: int
+    summary: str | None
+    original_type: str | None
+    source: SourceDetailResponse
+    tags: list[str]
+
+
+class ArticleUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    summary: str | None = Field(default=None, max_length=5_000)
+    category: Category | None = None
+    tags: list[str] | None = Field(default=None, max_length=30)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -61,6 +98,39 @@ def health() -> dict[str, str]:
 def articles() -> list[ArticleListItemResponse]:
     init_db()
     return list_articles()
+
+
+@app.get("/articles/{article_id}", response_model=ArticleDetailResponse)
+def article_detail(article_id: str) -> ArticleDetailResponse:
+    init_db()
+    article = get_article_detail(article_id)
+    if article is None:
+        raise HTTPException(status_code=404, detail="Article not found.")
+    return article
+
+
+@app.patch("/articles/{article_id}", response_model=ArticleDetailResponse)
+def edit_article(article_id: str, request: ArticleUpdateRequest) -> ArticleDetailResponse:
+    updates = request.model_dump(exclude_unset=True, mode="json")
+    if not updates:
+        raise HTTPException(status_code=422, detail="Provide at least one field to update.")
+    for field in ("title", "category"):
+        if field in updates and updates[field] is None:
+            raise HTTPException(status_code=422, detail=f"{field} cannot be null.")
+
+    init_db()
+    article = update_article(article_id, **updates)
+    if article is None:
+        raise HTTPException(status_code=404, detail="Article not found.")
+    return article
+
+
+@app.delete("/articles/{article_id}", status_code=204)
+def remove_article(article_id: str) -> Response:
+    init_db()
+    if not delete_article(article_id):
+        raise HTTPException(status_code=404, detail="Article not found.")
+    return Response(status_code=204)
 
 
 @app.post("/watch", response_model=WatchResponse)

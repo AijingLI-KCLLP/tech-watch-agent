@@ -113,6 +113,9 @@ The API is available at:
 - `POST /watch` - runs `watch topic -> search web -> chunk -> embed -> store`.
 - `POST /ask` - runs `ask <question> -> embed_query -> retrieve -> generate answer`.
 - `GET /articles` - lists saved articles for the web app.
+- `GET /articles/{article_id}` - returns an article with its source metadata and tags.
+- `PATCH /articles/{article_id}` - updates reviewable metadata: `title`, `summary`, `category`, and `tags`.
+- `DELETE /articles/{article_id}` - permanently removes an article, its tag links, and its retrieval vectors.
 
 The CLI calls the shared services directly, so it does not require Uvicorn to be running.
 

@@ -331,6 +331,160 @@ def list_articles(limit: int = 50) -> list[dict]:
         return [dict(row) for row in rows]
 
 
+_UNSET = object()
+
+
+def _normalized_tags(tags: list[str]) -> list[str]:
+    """Trim, remove empty values, and preserve the first occurrence of each tag."""
+    return list(dict.fromkeys(tag.strip() for tag in tags if tag.strip()))
+
+
+def get_article_detail(article_id: str) -> dict | None:
+    """Return an article with its source metadata and tags for review screens."""
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT a.id,
+                   a.title,
+                   a.url,
+                   a.content,
+                   a.fetched_at,
+                   a.category,
+                   a.n_tags,
+                   a.summary,
+                   a.original_type,
+                   s.id AS source_id,
+                   s.name AS source_name,
+                   s.url AS source_url,
+                   s.type AS source_type,
+                   s.credibility_score,
+                   s.source_summary
+            FROM articles AS a
+            JOIN sources AS s ON s.id = a.source_id
+            WHERE a.id = ?
+            """,
+            (article_id,),
+        ).fetchone()
+        if row is None:
+            return None
+
+        tags = conn.execute(
+            """
+            SELECT t.name
+            FROM tags AS t
+            JOIN article_tag AS at ON at.tag_id = t.id
+            WHERE at.article_id = ?
+            ORDER BY t.name COLLATE NOCASE
+            """,
+            (article_id,),
+        ).fetchall()
+
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "url": row["url"],
+            "content": row["content"],
+            "fetched_at": row["fetched_at"],
+            "category": row["category"],
+            "n_tags": row["n_tags"],
+            "summary": row["summary"],
+            "original_type": row["original_type"],
+            "source": {
+                "id": row["source_id"],
+                "name": row["source_name"],
+                "url": row["source_url"],
+                "type": row["source_type"],
+                "credibility_score": row["credibility_score"],
+                "source_summary": row["source_summary"],
+            },
+            "tags": [tag["name"] for tag in tags],
+        }
+
+
+def update_article(
+    article_id: str,
+    *,
+    title: str | object = _UNSET,
+    summary: str | None | object = _UNSET,
+    category: str | object = _UNSET,
+    tags: list[str] | None | object = _UNSET,
+) -> dict | None:
+    """Apply a review edit and return the resulting article detail."""
+    with _db() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM articles WHERE id = ?", (article_id,)
+        ).fetchone()
+        if exists is None:
+            return None
+
+        columns: list[str] = []
+        values: list[str | None] = []
+        for column, value in (("title", title), ("summary", summary), ("category", category)):
+            if value is not _UNSET:
+                columns.append(f"{column} = ?")
+                values.append(value)
+
+        if columns:
+            conn.execute(
+                f"UPDATE articles SET {', '.join(columns)} WHERE id = ?",
+                (*values, article_id),
+            )
+
+        if tags is not _UNSET:
+            replacement_tags = _normalized_tags([] if tags is None else tags)
+            conn.execute("DELETE FROM article_tag WHERE article_id = ?", (article_id,))
+            for tag_name in replacement_tags:
+                tag_row = conn.execute(
+                    "SELECT id FROM tags WHERE name = ?", (tag_name,)
+                ).fetchone()
+                if tag_row:
+                    tag_id = tag_row[0]
+                else:
+                    tag = Tag(name=tag_name)
+                    conn.execute(
+                        "INSERT INTO tags (id, name, created_at) VALUES (?, ?, ?)",
+                        (tag.id, tag.name, tag.created_at.isoformat()),
+                    )
+                    tag_id = tag.id
+                conn.execute(
+                    "INSERT INTO article_tag (article_id, tag_id) VALUES (?, ?)",
+                    (article_id, tag_id),
+                )
+            conn.execute(
+                "UPDATE articles SET n_tags = ? WHERE id = ?",
+                (len(replacement_tags), article_id),
+            )
+
+    return get_article_detail(article_id)
+
+
+def delete_article(article_id: str) -> bool:
+    """Remove an article's retrieval vectors, metadata, and tag relationships."""
+    with _db() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM articles WHERE id = ?", (article_id,)
+        ).fetchone()
+    if exists is None:
+        return False
+
+    # Remove vectors first so a successful delete cannot leave retrievable content behind.
+    _chroma().delete(where={"article_id": article_id})
+
+    with _db() as conn:
+        conn.execute("DELETE FROM article_tag WHERE article_id = ?", (article_id,))
+        conn.execute("DELETE FROM articles WHERE id = ?", (article_id,))
+        conn.execute(
+            """
+            DELETE FROM tags
+            WHERE NOT EXISTS (
+                SELECT 1 FROM article_tag WHERE article_tag.tag_id = tags.id
+            )
+            """
+        )
+    return True
+
+
 # Chroma
 _chroma_client: chromadb.PersistentClient | None = None
 

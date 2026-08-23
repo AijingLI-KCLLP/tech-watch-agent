@@ -209,6 +209,24 @@ button:hover:not(:disabled) {
   text-align: right;
 }
 
+.article-actions {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  gap: 0.7rem;
+}
+
+.delete-button {
+  padding: 0.35rem 0.55rem;
+  color: var(--ink);
+  background: transparent;
+  font-size: 0.65rem;
+}
+
+.delete-button:hover:not(:disabled) {
+  color: var(--paper);
+}
+
 .empty-state {
   display: block;
   color: var(--muted);
@@ -372,6 +390,10 @@ button:hover:not(:disabled) {
 
   .article-meta {
     text-align: left;
+  }
+
+  .article-actions {
+    justify-content: start;
   }
 
   .chat-content {

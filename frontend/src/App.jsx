@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 async function request(path, options = {}) {
   const response = await fetch(path, options);
-  if (response.ok) return response.json();
+  if (response.ok) return response.status === 204 ? null : response.json();
 
   const payload = await response.json().catch(() => ({}));
   throw new Error(payload.detail || "The request could not be completed.");
@@ -17,7 +17,7 @@ function formatArticleDate(dateValue) {
   return Number.isNaN(date.valueOf()) ? "unknown date" : date.toLocaleDateString();
 }
 
-function ArticleList({ articles, error }) {
+function ArticleList({ articles, deletingArticleId, error, onDelete }) {
   if (error) {
     return <p className="empty-state">Could not load articles: {error}</p>;
   }
@@ -37,9 +37,19 @@ function ArticleList({ articles, error }) {
       ) : (
         <span className="article-title">{article.title}</span>
       )}
-      <p className="article-meta">
-        {article.source_name || "unknown source"} / {formatArticleDate(article.fetched_at)} / {article.n_tags} tags
-      </p>
+      <div className="article-actions">
+        <p className="article-meta">
+          {article.source_name || "unknown source"} / {formatArticleDate(article.fetched_at)} / {article.n_tags} tags
+        </p>
+        <button
+          className="delete-button"
+          disabled={deletingArticleId === article.id}
+          onClick={() => onDelete(article)}
+          type="button"
+        >
+          {deletingArticleId === article.id ? "Deleting..." : "Delete"}
+        </button>
+      </div>
     </article>
   ));
 }
@@ -50,6 +60,7 @@ export default function App() {
   const [topic, setTopic] = useState("");
   const [watchStatus, setWatchStatus] = useState("");
   const [isWatching, setIsWatching] = useState(false);
+  const [deletingArticleId, setDeletingArticleId] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("Ask a question to begin.");
   const [isAsking, setIsAsking] = useState(false);
@@ -110,6 +121,22 @@ export default function App() {
     }
   }
 
+  async function handleDelete(article) {
+    const confirmed = window.confirm(`Delete \"${article.title}\"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setDeletingArticleId(article.id);
+    setArticleError("");
+    try {
+      await request(`/articles/${article.id}`, { method: "DELETE" });
+      await loadArticles();
+    } catch (error) {
+      setArticleError(`Could not delete article: ${errorMessage(error)}`);
+    } finally {
+      setDeletingArticleId("");
+    }
+  }
+
   return (
     <main className="shell">
       <header className="masthead">
@@ -142,7 +169,12 @@ export default function App() {
           <p className="count" aria-live="polite">{articles ? `${articles.length} saved` : ""}</p>
         </div>
         <div className="article-list" aria-live="polite">
-          <ArticleList articles={articles} error={articleError} />
+          <ArticleList
+            articles={articles}
+            deletingArticleId={deletingArticleId}
+            error={articleError}
+            onDelete={handleDelete}
+          />
         </div>
       </section>
 
