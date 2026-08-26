@@ -205,6 +205,12 @@ The Tech & Code allowlist is oriented around engineering practice rather than
 general product announcements: Cloudflare, Netflix, Shopify, Slack, LinkedIn,
 Stripe, CNCF, InfoQ, IEEE Spectrum, ACM Communications, and Martin Fowler.
 
+All LLM instructions live in [`prompts.json`](prompts.json): `categorize`,
+`tag`, `qualify_source`, and `retrieve_answer`. Edit the relevant template and
+restart the backend to apply it. Template fields such as `{title}`, `{content}`
+and `{question}` are populated by the application; keep them intact. Literal
+JSON braces in a template must be doubled (`{{` and `}}`).
+
 The CLI calls the shared services directly, so it does not require Uvicorn to be running.
 
 ### Run the React web app
@@ -327,6 +333,7 @@ tech_watch_agent/
 ├── api.py                 # FastAPI HTTP entry point
 ├── cli.py                 # entry point
 ├── config.py              # paths, model names, chunk size, top_k
+├── prompts.json           # editable LLM prompt templates
 ├── services/
 │   └── agent_service.py   # shared watch_topic / ask_question entry points
 ├── frontend/              # Vite + React development frontend
