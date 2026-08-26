@@ -13,3 +13,5 @@
   Pillow>=10.0.0
   pytesseract>=0.3.13
   python-multipart>=0.0.9
+  youtube-transcript-api>=1.2.0
+  faster-whisper>=1.1.0

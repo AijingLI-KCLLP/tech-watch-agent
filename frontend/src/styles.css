@@ -299,10 +299,31 @@ h2 {
   display: flex;
 }
 
+.url-add-row select {
+  width: 11rem;
+  flex: 0 0 11rem;
+  min-height: 0;
+  padding: 0 0.75rem;
+}
+
 .url-add-row button {
   min-width: 6.3rem;
   padding: 0 0.75rem;
   font-size: 0.7rem;
+}
+
+.podcast-transcript-panel {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.65rem;
+  border: 1px dashed var(--line);
+}
+
+.podcast-transcript-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
 }
 
 .file-preview p {

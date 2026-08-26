@@ -31,6 +31,9 @@ TOP_K = 5
 RETRIEVAL_MIN_SCORE = float(os.getenv("RETRIEVAL_MIN_SCORE", "0.45"))
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_PODCAST_AUDIO_BYTES = int(os.getenv("MAX_PODCAST_AUDIO_BYTES", str(750 * 1024 * 1024)))
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")
+WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 
 # "vision" is reserved for a future multimodal-model extractor.
 IMAGE_EXTRACTION_MODE = os.getenv("IMAGE_EXTRACTION_MODE", "ocr").strip().lower()

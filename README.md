@@ -157,7 +157,39 @@ The API is available at:
 - `POST /content/text` - ingests pasted text through `transcribe / normalize`.
 - `POST /content/file` - ingests text, PDF, or image uploads, then verifies a provided source URL or finds a candidate source.
 - `POST /content/url` - inspects the URL `Content-Type`, then ingests HTML, text, PDF, or image content directly.
+- `POST /content/youtube` - retrieves a public YouTube caption transcript and stores it as searchable content.
+- `POST /content/podcast` - resolves a public podcast transcript or RSS audio enclosure from an episode URL, then stores normalized transcript text.
 - `GET /input-assets/{asset_id}/file` - returns a retained raw upload for manual review.
+
+### Add media as searchable content
+
+YouTube ingestion retrieves the video's public captions. The video remains the
+article URL, the channel is stored as a `video` source, and the normalized
+caption text becomes the searchable content:
+
+```bash
+curl -X POST http://127.0.0.1:8000/content/youtube \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://www.youtube.com/watch?v=VIDEO_ID"}'
+```
+
+For a podcast, paste the episode URL—even a Spotify or Apple Podcasts URL. The
+agent first looks for a publisher-provided Podcasting 2.0/RSS transcript, then
+for a public RSS audio enclosure to transcribe locally with Faster-Whisper. The
+first transcription downloads the configured Whisper model (`base` by default)
+and can take several minutes for a long episode. Paste transcript text or link
+a transcript page only when you want to bypass automatic resolution.
+
+```bash
+curl -X POST http://127.0.0.1:8000/content/podcast \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://open.spotify.com/episode/EPISODE_ID"}'
+```
+
+Automatic transcription only uses publicly reachable publisher audio. An error
+is returned for Spotify-exclusive, subscriber-only, DRM-protected, or otherwise
+unresolvable episodes. Configure `WHISPER_MODEL` (default `base`) or
+`MAX_PODCAST_AUDIO_BYTES` (default 750 MB) in `.env` if needed.
 
 Discovery only returns results from the per-category domain allowlist in
 [`discovery_sources.json`](discovery_sources.json). Edit that versioned file to
@@ -280,7 +312,8 @@ python cli.py tag --replace
 
 ## Roadmap
 
-Implemented capabilities include web search, pasted text/file/URL capture, OCR
+Implemented capabilities include web search, pasted text/file/URL capture, YouTube captions, RSS-first podcast
+transcript capture with local transcription fallback, OCR
 for images, source qualification, automatic categories and tags, manual article
 metadata updates through the API, the React library UI, and RAG retrieval.
 

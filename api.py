@@ -20,7 +20,9 @@ from core.models import Category, OriginalType, SourceVerificationStatus
 from services.agent_service import (
     add_article_by_url,
     add_pasted_text,
+    add_podcast_episode,
     add_uploaded_file,
+    add_youtube_video,
     ask_question,
     watch_topic,
 )
@@ -75,6 +77,13 @@ class PasteTextRequest(BaseModel):
 
 class AddArticleUrlRequest(BaseModel):
     url: HttpUrl
+    title: str | None = Field(default=None, max_length=500)
+
+
+class AddPodcastRequest(BaseModel):
+    url: HttpUrl
+    transcript: str | None = Field(default=None, min_length=1, max_length=500_000)
+    transcript_url: HttpUrl | None = None
     title: str | None = Field(default=None, max_length=500)
 
 
@@ -223,6 +232,37 @@ def add_url_content(request: AddArticleUrlRequest) -> AddContentResponse:
         raise HTTPException(
             status_code=503,
             detail="URL ingest failed. Check the URL, OCR setup, and application logs.",
+        ) from exc
+
+
+@app.post("/content/youtube", response_model=AddContentResponse)
+def add_youtube_content(request: AddArticleUrlRequest) -> AddContentResponse:
+    try:
+        return add_youtube_video(url=str(request.url), title=request.title)
+    except ContentExtractionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="YouTube ingest failed. Check captions and the application logs.",
+        ) from exc
+
+
+@app.post("/content/podcast", response_model=AddContentResponse)
+def add_podcast_content(request: AddPodcastRequest) -> AddContentResponse:
+    try:
+        return add_podcast_episode(
+            url=str(request.url),
+            transcript=request.transcript,
+            transcript_url=(str(request.transcript_url) if request.transcript_url else None),
+            title=request.title,
+        )
+    except ContentExtractionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Podcast ingest failed. Check the transcript and application logs.",
         ) from exc
 
 

@@ -83,6 +83,69 @@ class ContentApiTest(unittest.TestCase):
             title="A URL article",
         )
 
+    @patch("api.add_youtube_video")
+    def test_youtube_url_is_forwarded_to_the_service(self, add_youtube_video) -> None:
+        add_youtube_video.return_value = {
+            "article": {"id": "video-1", "title": "A video", "url": "https://youtube.com/watch?v=one"},
+            "input_asset_id": "asset-video-1",
+            "chunk_count": 1,
+            "source_verification_status": "verified",
+        }
+
+        response = self.client.post(
+            "/content/youtube",
+            json={"url": "https://youtu.be/AbCdEf12345", "title": "A video"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        add_youtube_video.assert_called_once_with(
+            url="https://youtu.be/AbCdEf12345", title="A video"
+        )
+
+    @patch("api.add_podcast_episode")
+    def test_podcast_is_forwarded_to_the_service(self, add_podcast_episode) -> None:
+        add_podcast_episode.return_value = {
+            "article": {"id": "podcast-1", "title": "An episode", "url": "https://podcasts.example/1"},
+            "input_asset_id": "asset-podcast-1",
+            "chunk_count": 1,
+            "source_verification_status": "verified",
+        }
+
+        response = self.client.post(
+            "/content/podcast",
+            json={"url": "https://podcasts.example/1", "transcript": "A transcript."},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        add_podcast_episode.assert_called_once_with(
+            url="https://podcasts.example/1",
+            transcript="A transcript.",
+            transcript_url=None,
+            title=None,
+        )
+
+    @patch("api.add_podcast_episode")
+    def test_podcast_url_can_request_automatic_transcription(self, add_podcast_episode) -> None:
+        add_podcast_episode.return_value = {
+            "article": {"id": "podcast-2", "title": "An episode", "url": "https://podcasts.example/2"},
+            "input_asset_id": "asset-podcast-2",
+            "chunk_count": 1,
+            "source_verification_status": "verified",
+        }
+
+        response = self.client.post(
+            "/content/podcast",
+            json={"url": "https://open.spotify.com/episode/example"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        add_podcast_episode.assert_called_once_with(
+            url="https://open.spotify.com/episode/example",
+            transcript=None,
+            transcript_url=None,
+            title=None,
+        )
+
     @patch("api.init_db")
     @patch("api.count_articles", return_value=21)
     @patch("api.list_articles")

@@ -334,7 +334,10 @@ export default function App() {
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
   const [contentTitle, setContentTitle] = useState("");
   const [contentSourceUrl, setContentSourceUrl] = useState("");
-  const [articleUrl, setArticleUrl] = useState("");
+  const [urlContentType, setUrlContentType] = useState("article");
+  const [contentUrl, setContentUrl] = useState("");
+  const [podcastTranscript, setPodcastTranscript] = useState("");
+  const [podcastTranscriptUrl, setPodcastTranscriptUrl] = useState("");
   const [contentStatus, setContentStatus] = useState("");
   const [isAddingContent, setIsAddingContent] = useState(false);
   const [isAddingUrl, setIsAddingUrl] = useState(false);
@@ -514,29 +517,48 @@ export default function App() {
   }
 
   async function handleAddUrl() {
-    const url = articleUrl.trim();
+    const url = contentUrl.trim();
     if (!url) {
-      setContentStatus("Enter an article URL first.");
+      setContentStatus(`Enter a ${urlContentType === "article" ? "URL" : urlContentType === "youtube" ? "YouTube video URL" : "podcast episode URL"} first.`);
+      return;
+    }
+    const transcript = podcastTranscript.trim();
+    const transcriptUrl = podcastTranscriptUrl.trim();
+    if (urlContentType === "podcast" && transcript && transcriptUrl) {
+      setContentStatus("For a podcast, provide transcript text or a transcript URL, not both.");
       return;
     }
 
     setIsAddingUrl(true);
-    setContentStatus("Inspecting, downloading, normalizing, embedding, and storing...");
+    setContentStatus(
+      urlContentType === "youtube"
+        ? "Retrieving captions, embedding, and storing..."
+        : urlContentType === "podcast"
+          ? "Normalizing transcript, embedding, and storing..."
+          : "Inspecting, downloading, normalizing, embedding, and storing...",
+    );
     try {
-      const result = await request("/content/url", {
+      const result = await request(
+        urlContentType === "article" ? "/content/url" : `/content/${urlContentType}`,
+        {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url,
           ...(contentTitle.trim() && { title: contentTitle.trim() }),
+          ...(urlContentType === "podcast" && transcript && { transcript }),
+          ...(urlContentType === "podcast" && transcriptUrl && { transcript_url: transcriptUrl }),
         }),
-      });
-      setContentStatus(`Saved ${result.article.title} with ${result.chunk_count} chunks. Source: verified.`);
-      setArticleUrl("");
+        },
+      );
+      setContentStatus(`Saved ${result.article.title} with ${result.chunk_count} chunks.`);
+      setContentUrl("");
+      setPodcastTranscript("");
+      setPodcastTranscriptUrl("");
       setContentTitle("");
       await loadArticles();
     } catch (error) {
-      setContentStatus(`Could not add URL: ${errorMessage(error)}`);
+      setContentStatus(`Could not add ${urlContentType}: ${errorMessage(error)}`);
     } finally {
       setIsAddingUrl(false);
     }
@@ -638,15 +660,26 @@ export default function App() {
               onClear={clearContentFile}
             />
             <div className="url-add-row">
-              <label className="sr-only" htmlFor="article-url">Article URL to ingest</label>
-              <input id="article-url" onChange={(event) => setArticleUrl(event.target.value)} onKeyDown={(event) => {
+              <label className="sr-only" htmlFor="url-content-type">Content type</label>
+              <select id="url-content-type" onChange={(event) => setUrlContentType(event.target.value)} value={urlContentType}>
+                <option value="article">Article URL</option>
+                <option value="youtube">YouTube video</option>
+                <option value="podcast">Podcast episode</option>
+              </select>
+              <label className="sr-only" htmlFor="content-url">URL to ingest</label>
+              <input id="content-url" onChange={(event) => setContentUrl(event.target.value)} onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
                   handleAddUrl();
                 }
-              }} placeholder="Add article by URL: https://example.com/article" type="url" value={articleUrl} />
-              <button disabled={isAddingContent || isAddingUrl} onClick={handleAddUrl} type="button">{isAddingUrl ? "Adding URL..." : "Add URL"}</button>
+              }} placeholder={urlContentType === "article" ? "https://example.com/article" : urlContentType === "youtube" ? "YouTube video URL with captions" : "Podcast episode URL"} type="url" value={contentUrl} />
+              <button disabled={isAddingContent || isAddingUrl} onClick={handleAddUrl} type="button">{isAddingUrl ? "Adding..." : "Add URL"}</button>
             </div>
+            {urlContentType === "podcast" && <div className="podcast-transcript-panel">
+                <p>Optional: paste a transcript or link one. Leave both blank to find a public feed and transcribe its audio locally.</p>
+                <textarea aria-label="Podcast transcript" disabled={Boolean(podcastTranscriptUrl)} maxLength="500000" onChange={(event) => setPodcastTranscript(event.target.value)} placeholder="Paste a transcript instead of automatic transcription..." rows="4" value={podcastTranscript} />
+                <input aria-label="Podcast transcript URL" disabled={Boolean(podcastTranscript)} onChange={(event) => setPodcastTranscriptUrl(event.target.value)} placeholder="Or link a publisher transcript page" type="url" value={podcastTranscriptUrl} />
+            </div>}
             <button disabled={isAddingContent || isAddingUrl} type="submit">{isAddingContent ? "Adding..." : "Add to library"}</button>
             <p className="status" aria-live="polite">{contentStatus}</p>
           </form>

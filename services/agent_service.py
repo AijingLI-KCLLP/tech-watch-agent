@@ -1,10 +1,17 @@
 from typing import TypedDict
 
 from adapters.content import (
+    ContentExtractionError,
     extract_file_content,
     normalize_text,
     persist_upload,
     sha256_bytes,
+)
+from adapters.media import fetch_youtube_transcript, podcast_source, youtube_source
+from adapters.podcast import (
+    fetch_podcast_transcript,
+    resolve_podcast_episode,
+    transcribe_podcast_audio,
 )
 from adapters.categorizer import categorize_text
 from adapters.qualifier import qualify_source
@@ -240,6 +247,126 @@ def add_article_by_url(
         normalized_text=fetched.text,
         input_asset=input_asset,
         title=title or fetched.title or None,
+        verification=verification,
+    )
+
+
+def add_youtube_video(
+    url: str,
+    title: str | None = None,
+) -> AddContentResult:
+    """Turn a YouTube video's public captions into searchable library text."""
+    transcript = fetch_youtube_transcript(url)
+    verification = SourceVerification(
+        status=SourceVerificationStatus.VERIFIED,
+        reason="Public YouTube captions were retrieved for this video.",
+        confidence=1.0,
+        source=youtube_source(transcript),
+        article_url=transcript.video_url,
+    )
+    raw_bytes = transcript.text.encode("utf-8")
+    input_asset = InputAsset(
+        original_type=OriginalType.TEXT,
+        mime_type="text/plain",
+        input_filename=f"youtube-{transcript.video_url.rsplit('=', maxsplit=1)[-1]}.transcript.txt",
+        sha256=sha256_bytes(raw_bytes),
+        raw_text=transcript.text,
+        extracted_text=transcript.text,
+        provided_source_url=transcript.video_url,
+        source_verification_status=verification.status,
+        source_verification_reason=verification.reason,
+        source_verification_confidence=verification.confidence,
+    )
+    return _ingest_normalized_content(
+        normalized_text=transcript.text,
+        input_asset=input_asset,
+        title=title or transcript.title,
+        verification=verification,
+    )
+
+
+def add_podcast_episode(
+    *,
+    url: str,
+    transcript: str | None = None,
+    transcript_url: str | None = None,
+    title: str | None = None,
+) -> AddContentResult:
+    """Ingest pasted, publisher-provided, or locally transcribed podcast text."""
+    if transcript and transcript.strip() and transcript_url:
+        raise ContentExtractionError(
+            "Provide transcript text or transcript_url, not both."
+        )
+
+    transcript_title = None
+    if transcript_url:
+        fetched = fetch_url_content(transcript_url)
+        normalized_text = fetched.text
+        transcript_title = fetched.title or None
+        provenance_reason = f"Transcript retrieved from {fetched.final_url}."
+        input_filename = fetched.filename
+        mime_type = fetched.mime_type
+        raw_text = None
+        source_url = url
+        source = podcast_source(url)
+    elif transcript and transcript.strip():
+        normalized_text = normalize_text(transcript or "")
+        provenance_reason = "Transcript supplied with the podcast episode URL."
+        input_filename = "podcast.transcript.txt"
+        mime_type = "text/plain"
+        raw_text = transcript
+        source_url = url
+        source = podcast_source(url)
+    else:
+        resolved = resolve_podcast_episode(url)
+        source_url = url
+        source = Source(
+            name=resolved.publisher_name or podcast_source(url).name,
+            url=resolved.publisher_url or str(podcast_source(url).url),
+            type=podcast_source(url).type,
+        )
+        transcript_title = resolved.title
+        if resolved.transcript_url:
+            normalized_text = fetch_podcast_transcript(resolved.transcript_url)
+            provenance_reason = f"Transcript retrieved from the publisher feed: {resolved.transcript_url}."
+            input_filename = "podcast.publisher-transcript.txt"
+        elif resolved.audio_url:
+            normalized_text = transcribe_podcast_audio(
+                resolved.audio_url, language=resolved.language
+            )
+            provenance_reason = f"Transcript generated locally from the public episode audio: {resolved.audio_url}."
+            input_filename = "podcast.local-transcript.txt"
+        else:
+            raise ContentExtractionError(
+                "The podcast feed does not provide a transcript or public audio enclosure."
+            )
+        mime_type = "text/plain"
+        raw_text = normalized_text
+
+    verification = SourceVerification(
+        status=SourceVerificationStatus.VERIFIED,
+        reason=provenance_reason,
+        confidence=1.0,
+        source=source,
+        article_url=source_url,
+    )
+    raw_bytes = normalized_text.encode("utf-8")
+    input_asset = InputAsset(
+        original_type=OriginalType.TEXT,
+        mime_type=mime_type,
+        input_filename=input_filename,
+        sha256=sha256_bytes(raw_bytes),
+        raw_text=raw_text,
+        extracted_text=normalized_text,
+        provided_source_url=url,
+        source_verification_status=verification.status,
+        source_verification_reason=verification.reason,
+        source_verification_confidence=verification.confidence,
+    )
+    return _ingest_normalized_content(
+        normalized_text=normalized_text,
+        input_asset=input_asset,
+        title=title or transcript_title,
         verification=verification,
     )
 
