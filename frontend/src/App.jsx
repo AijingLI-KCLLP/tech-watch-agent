@@ -225,8 +225,10 @@ function ArticleEditor({ articleId, onClose, onSaved }) {
   );
 }
 
-function isAllArticlesPage() {
-  return window.location.hash === "#/articles";
+function pageFromHash() {
+  if (window.location.hash === "#/articles") return "articles";
+  if (window.location.hash === "#/drafts") return "drafts";
+  return "dashboard";
 }
 
 function clipboardFile(event) {
@@ -239,6 +241,205 @@ function clipboardFile(event) {
 
   const extension = file.type.split("/")[1] || "bin";
   return new File([file], `pasted-file.${extension}`, { type: file.type });
+}
+
+const DRAFT_SUGGESTIONS = {
+  language: ["English", "French", "Chinese (Simplified)"],
+  audience: ["Engineering team", "Product and business leaders", "Potential clients", "Founders and operators", "Technical peers", "General audience"],
+  objective: ["Share a practical insight", "Teach a concrete method", "Explain a strategic decision", "Build credibility with clients", "Start a professional discussion", "Challenge a common assumption", "Share a lesson learned", "Get feedback on an idea", "Attract collaborators or candidates", "Turn research into an actionable takeaway", "Document a team practice", "Announce a new direction"],
+  tone: ["Clear and pragmatic", "Confident and opinionated", "Warm and conversational", "Analytical and nuanced", "Direct and concise", "Educational and structured"],
+};
+
+function SuggestedInput({ field, label, onChange, value }) {
+  const listId = `draft-${field}-suggestions`;
+  return (
+    <div>
+      <label htmlFor={`draft-${field}`}>{label}</label>
+      <input id={`draft-${field}`} list={listId} onChange={(event) => onChange(field, event.target.value)} placeholder="Choose below or type your own" required value={value} />
+      <datalist id={listId}>
+        {DRAFT_SUGGESTIONS[field].map((suggestion) => <option key={suggestion} value={suggestion} />)}
+      </datalist>
+      <div aria-label={`${label} suggestions`} className="suggestion-options">
+        {DRAFT_SUGGESTIONS[field].map((suggestion) => <button className={value === suggestion ? "suggestion-option is-selected" : "suggestion-option"} key={suggestion} onClick={() => onChange(field, suggestion)} type="button">{suggestion}</button>)}
+      </div>
+    </div>
+  );
+}
+
+function LanguageSelect({ onChange, value }) {
+  return <div>
+    <label htmlFor="draft-language">Language</label>
+    <select id="draft-language" onChange={(event) => onChange("language", event.target.value)} value={value}>
+      {DRAFT_SUGGESTIONS.language.map((language) => <option key={language} value={language}>{language}</option>)}
+    </select>
+  </div>;
+}
+
+function DraftComposer({ onCreated }) {
+  const [form, setForm] = useState({
+    intent: "",
+    format: "post",
+    platform: "LinkedIn",
+    language: "English",
+    audience: "Engineering team",
+    objective: "Share a practical insight",
+    tone: "Clear and pragmatic",
+    personal_angle: "",
+    enrich_with_web: true,
+  });
+  const [error, setError] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  function setField(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError("");
+    setIsGenerating(true);
+    try {
+      const draft = await request("/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, intent: form.intent.trim(), personal_angle: form.personal_angle.trim() }),
+      });
+      onCreated(draft.id);
+    } catch (generateError) {
+      setError(errorMessage(generateError));
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  return (
+    <section className="draft-composer" aria-labelledby="draft-composer-title">
+      <div className="section-heading">
+        <div>
+          <p className="section-number">04 / DRAFT</p>
+          <h2 id="draft-composer-title">Turn an idea into a draft.</h2>
+        </div>
+      </div>
+      <p className="draft-copy">Describe what you want to share. The cabinet finds relevant library sources, can enrich them from the web, then produces a local draft for human review.</p>
+      <form className="draft-form" onSubmit={handleSubmit}>
+        <label htmlFor="draft-intent">What do you want to share?</label>
+        <textarea id="draft-intent" maxLength="2000" minLength="1" onChange={(event) => setField("intent", event.target.value)} placeholder="For example: I want to share a practical view on how small teams can use AI agents without adding unnecessary complexity." required rows="3" value={form.intent} />
+        <div className="editor-fields">
+          <div>
+            <label htmlFor="draft-format">Format</label>
+            <select id="draft-format" onChange={(event) => setField("format", event.target.value)} value={form.format}>
+              <option value="post">Post</option>
+              <option value="note">Note</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="draft-platform">Platform</label>
+            <select id="draft-platform" onChange={(event) => setField("platform", event.target.value)} value={form.platform}>
+              <option value="LinkedIn">LinkedIn</option>
+              <option value="X / Twitter">X / Twitter</option>
+              <option value="RedNote">RedNote</option>
+              <option value="none">No platform / neutral</option>
+            </select>
+          </div>
+          <LanguageSelect onChange={setField} value={form.language} />
+          <SuggestedInput field="audience" label="Audience" onChange={setField} value={form.audience} />
+          <SuggestedInput field="objective" label="Objective" onChange={setField} value={form.objective} />
+          <SuggestedInput field="tone" label="Tone" onChange={setField} value={form.tone} />
+        </div>
+        <label htmlFor="draft-angle">Your personal angle</label>
+        <textarea id="draft-angle" maxLength="2000" minLength="1" onChange={(event) => setField("personal_angle", event.target.value)} placeholder="What do you personally want to add, question, or challenge?" required rows="3" value={form.personal_angle} />
+        <label className="web-enrichment-option" htmlFor="draft-web-enrichment">
+          <input checked={form.enrich_with_web} id="draft-web-enrichment" onChange={(event) => setField("enrich_with_web", event.target.checked)} type="checkbox" />
+          Enrich with recent web sources before drafting
+        </label>
+        {error && <p className="editor-error" role="alert">Could not generate draft: {error}</p>}
+        <div className="editor-actions">
+          <button disabled={isGenerating} type="submit">{isGenerating ? "Finding sources and drafting…" : "Find sources and generate draft"}</button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function DraftEditor({ draftId, onClose, onSaved }) {
+  const [draft, setDraft] = useState(null);
+  const [form, setForm] = useState(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setDraft(null); setForm(null); setError("");
+    request(`/drafts/${draftId}`).then((result) => {
+      if (!active) return;
+      setDraft(result);
+      setForm({ title: result.title, intent: result.intent, platform: result.platform, content: result.content, language: result.language, audience: result.audience, objective: result.objective, tone: result.tone, personal_angle: result.personal_angle, status: result.status });
+    }).catch((loadError) => active && setError(errorMessage(loadError)));
+    return () => { active = false; };
+  }, [draftId]);
+
+  function setField(field, value) { setForm((current) => ({ ...current, [field]: value })); }
+
+  async function save(event) {
+    event.preventDefault();
+    if (!form) return;
+    setSaving(true); setError("");
+    try {
+      const updated = await request(`/drafts/${draftId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(Object.entries(form).map(([key, value]) => [key, typeof value === "string" ? value.trim() : value]))) });
+      setDraft(updated);
+      await onSaved();
+    } catch (saveError) { setError(errorMessage(saveError)); } finally { setSaving(false); }
+  }
+
+  async function regenerate() {
+    if (!window.confirm("Regenerate this draft from its selected sources? Your current manual edits will be replaced.")) return;
+    setRegenerating(true); setError("");
+    try {
+      const updated = await request(`/drafts/${draftId}/regenerate`, { method: "POST" });
+      setDraft(updated);
+      setForm({ title: updated.title, intent: updated.intent, platform: updated.platform, content: updated.content, language: updated.language, audience: updated.audience, objective: updated.objective, tone: updated.tone, personal_angle: updated.personal_angle, status: updated.status });
+      await onSaved();
+    } catch (regenerateError) { setError(errorMessage(regenerateError)); } finally { setRegenerating(false); }
+  }
+
+  return <div className="editor-backdrop" onMouseDown={onClose}>
+    <section aria-labelledby="draft-editor-title" aria-modal="true" className="article-editor draft-editor" onMouseDown={(event) => event.stopPropagation()} role="dialog">
+      <div className="editor-heading"><div><p className="section-number">UNPUBLISHED DRAFT</p><h2 id="draft-editor-title">Manual edit</h2></div><button className="close-button" onClick={onClose} type="button">Close</button></div>
+      {error && <p className="editor-error" role="alert">{error}</p>}
+      {!draft || !form ? <p className="empty-state">Loading draft…</p> : <form className="editor-form" onSubmit={save}>
+        <label htmlFor="draft-edit-title">Title</label><input id="draft-edit-title" maxLength="500" onChange={(event) => setField("title", event.target.value)} required value={form.title} />
+        <label htmlFor="draft-edit-intent">Sharing intent</label><textarea id="draft-edit-intent" maxLength="2000" onChange={(event) => setField("intent", event.target.value)} required rows="3" value={form.intent} />
+        <div><label htmlFor="draft-edit-platform">Platform</label><select id="draft-edit-platform" onChange={(event) => setField("platform", event.target.value)} value={form.platform}><option value="LinkedIn">LinkedIn</option><option value="X / Twitter">X / Twitter</option><option value="RedNote">RedNote</option><option value="none">No platform / neutral</option></select></div>
+        <div className="editor-fields"><LanguageSelect onChange={setField} value={form.language} /><SuggestedInput field="audience" label="Audience" onChange={setField} value={form.audience} /><SuggestedInput field="objective" label="Objective" onChange={setField} value={form.objective} /><SuggestedInput field="tone" label="Tone" onChange={setField} value={form.tone} /></div>
+        <label htmlFor="draft-edit-angle">Your personal angle</label><textarea id="draft-edit-angle" maxLength="2000" onChange={(event) => setField("personal_angle", event.target.value)} required rows="3" value={form.personal_angle} />
+        <label htmlFor="draft-edit-content">Draft content</label><textarea id="draft-edit-content" maxLength="100000" minLength="1" onChange={(event) => setField("content", event.target.value)} required rows="18" value={form.content} />
+        <div className="editor-fields"><div><label htmlFor="draft-status">Review status</label><select id="draft-status" onChange={(event) => setField("status", event.target.value)} value={form.status}><option value="draft">Draft</option><option value="reviewed">Reviewed</option></select></div></div>
+        <section className="provenance-panel"><h3>Selected sources</h3>{draft.articles.map((article) => <p key={article.id}>{article.position + 1}. {article.url ? <a href={article.url} rel="noreferrer" target="_blank">{article.title}</a> : article.title}</p>)}</section>
+        <div className="editor-actions"><button className="close-button" disabled={regenerating || saving} onClick={regenerate} type="button">{regenerating ? "Regenerating…" : "Regenerate"}</button><button disabled={saving || regenerating} type="submit">{saving ? "Saving…" : "Save draft"}</button></div>
+      </form>}
+    </section>
+  </div>;
+}
+
+function DraftsPage() {
+  const [drafts, setDrafts] = useState(null);
+  const [error, setError] = useState("");
+  const [editingDraftId, setEditingDraftId] = useState("");
+  async function loadDrafts() {
+    setError("");
+    try { const result = await request("/drafts"); setDrafts(result.items); } catch (loadError) { setError(errorMessage(loadError)); }
+  }
+  useEffect(() => { loadDrafts(); }, []);
+  return <section className="library-panel" aria-labelledby="drafts-title">
+    <div className="section-heading"><div><p className="section-number">DRAFTS</p><h1 id="drafts-title">Unpublished drafts</h1></div><a className="library-link" href="#/">Dashboard</a></div>
+    <p className="draft-copy">Drafts are saved locally. Review, edit, and publish them yourself when they are ready.</p>
+    {error && <p className="empty-state">Could not load drafts: {error}</p>}
+    {drafts === null && !error && <p className="empty-state">Loading drafts…</p>}
+    {drafts?.length === 0 && <p className="empty-state">No drafts yet. Describe what you want to share and generate one.</p>}
+    <div className="article-list">{drafts?.map((draft) => <article className="article-row" key={draft.id}><div className="article-heading"><div className="article-title-line"><span className="category-badge">{draft.format}</span><button className="draft-title" onClick={() => setEditingDraftId(draft.id)} type="button">{draft.title}</button></div><p className="article-meta draft-meta">{draft.platform} / {draft.language} / {draft.audience} / {draft.article_count} sources</p></div><div className="article-actions"><p className="article-meta">{draft.status} / updated {formatArticleDate(draft.updated_at)}</p><button className="edit-button" onClick={() => setEditingDraftId(draft.id)} type="button">Edit draft</button></div></article>)}</div>
+    {editingDraftId && <DraftEditor draftId={editingDraftId} onClose={() => setEditingDraftId("")} onSaved={loadDrafts} />}
+  </section>;
 }
 
 function FilePreview({ file, imagePreviewUrl, onClear }) {
@@ -320,7 +521,7 @@ export default function App() {
   const [articles, setArticles] = useState(null);
   const [articleTotal, setArticleTotal] = useState(0);
   const [articleError, setArticleError] = useState("");
-  const [showAllArticles, setShowAllArticles] = useState(isAllArticlesPage);
+  const [page, setPage] = useState(pageFromHash);
   const [libraryPage, setLibraryPage] = useState(0);
   const [topic, setTopic] = useState("");
   const [watchStatus, setWatchStatus] = useState("");
@@ -348,6 +549,9 @@ export default function App() {
   const [isAsking, setIsAsking] = useState(false);
   const fileInputRef = useRef(null);
 
+  const showAllArticles = page === "articles";
+  const isDraftsPage = page === "drafts";
+
   const articleLimit = showAllArticles ? LIBRARY_PAGE_SIZE : DASHBOARD_ARTICLE_LIMIT;
   const articleOffset = showAllArticles ? libraryPage * LIBRARY_PAGE_SIZE : 0;
 
@@ -371,7 +575,7 @@ export default function App() {
 
   useEffect(() => {
     function handleHashChange() {
-      setShowAllArticles(isAllArticlesPage());
+      setPage(pageFromHash());
       setLibraryPage(0);
     }
 
@@ -452,8 +656,8 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!showAllArticles) loadDiscovery();
-  }, [showAllArticles]);
+    if (!showAllArticles && !isDraftsPage) loadDiscovery();
+  }, [showAllArticles, isDraftsPage]);
 
   async function handleAddContent(event) {
     event.preventDefault();
@@ -610,8 +814,10 @@ export default function App() {
         <a className="wordmark" href="#/">Signal Cabinet</a>
         <p className="eyebrow">PERSONAL TECH WATCH / LOCAL RAG</p>
         <p className="intro">Collect the signal, then ask your library what it knows.</p>
+        <a className="masthead-drafts-link" href="#/drafts">Drafts</a>
       </header>
 
+      {isDraftsPage ? <DraftsPage /> : <>
       {!showAllArticles && <TopicDiscovery
         categories={discoveryCategories}
         isLoading={isDiscovering}
@@ -695,9 +901,9 @@ export default function App() {
           <div className="library-heading-actions">
             <p className="count" aria-live="polite">{articles !== null ? `${articleTotal} saved` : ""}</p>
             {showAllArticles ? (
-              <a className="library-link" href="#/">Dashboard</a>
+              <><a className="library-link" href="#/drafts">Drafts</a><a className="library-link" href="#/">Dashboard</a></>
             ) : (
-              <a className="library-link" href="#/articles">View all</a>
+              <><a className="library-link" href="#/drafts">Drafts</a><a className="library-link" href="#/articles">View all</a></>
             )}
           </div>
         </div>
@@ -738,6 +944,10 @@ export default function App() {
           </div>
         </div>
       </section>}
+
+      <DraftComposer
+        onCreated={() => { window.location.hash = "#/drafts"; }}
+      />
       {editingArticleId && (
         <ArticleEditor
           articleId={editingArticleId}
@@ -745,6 +955,7 @@ export default function App() {
           onSaved={loadArticles}
         />
       )}
+      </>}
     </main>
   );
 }

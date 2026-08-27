@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timezone
 import chromadb
 from contextlib import contextmanager
 from typing import Iterator
@@ -9,7 +10,7 @@ from config import (
     SQLITE_PATH
 )
 
-from core.models import Article, Category, Chunk, InputAsset, Source, Tag
+from core.models import Article, Category, Chunk, Draft, InputAsset, Source, Tag
 
 # SQLite
 
@@ -131,6 +132,41 @@ INPUT_ASSET_SCHEMA = """
 
     CREATE INDEX IF NOT EXISTS idx_input_asset_article ON input_assets(article_id);
     CREATE INDEX IF NOT EXISTS idx_input_asset_sha256 ON input_assets(sha256);
+"""
+
+
+DRAFT_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS drafts
+    (
+        id                TEXT PRIMARY KEY,
+        title             TEXT NOT NULL,
+        intent            TEXT NOT NULL,
+        format            TEXT NOT NULL CHECK (format IN ('note', 'post')),
+        platform          TEXT NOT NULL DEFAULT 'none',
+        language          TEXT NOT NULL,
+        audience          TEXT NOT NULL,
+        objective         TEXT NOT NULL,
+        tone              TEXT NOT NULL,
+        personal_angle    TEXT NOT NULL,
+        source_summary    TEXT NOT NULL,
+        generated_content TEXT NOT NULL,
+        content           TEXT NOT NULL,
+        status            TEXT NOT NULL DEFAULT 'draft'
+                          CHECK (status IN ('draft', 'reviewed')),
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS draft_article
+    (
+        draft_id   TEXT NOT NULL REFERENCES drafts (id) ON DELETE CASCADE,
+        article_id TEXT NOT NULL REFERENCES articles (id) ON DELETE CASCADE,
+        position   INTEGER NOT NULL,
+        PRIMARY KEY (draft_id, article_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_draft_article_article ON draft_article(article_id);
+    CREATE INDEX IF NOT EXISTS idx_draft_updated_at ON drafts(updated_at DESC);
 """
 
 
@@ -263,6 +299,14 @@ def init_db() -> None:
             conn.execute("PRAGMA foreign_keys = ON")
 
         conn.executescript(INPUT_ASSET_SCHEMA)
+        conn.executescript(DRAFT_SCHEMA)
+        draft_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(drafts)").fetchall()
+        }
+        if "intent" not in draft_columns:
+            conn.execute("ALTER TABLE drafts ADD COLUMN intent TEXT NOT NULL DEFAULT ''")
+        if "platform" not in draft_columns:
+            conn.execute("ALTER TABLE drafts ADD COLUMN platform TEXT NOT NULL DEFAULT 'none'")
 
 
 def save_source(source: Source) -> None:
@@ -842,6 +886,159 @@ def update_article(
             )
 
     return get_article_detail(article_id)
+
+
+def save_draft(draft: Draft, article_ids: list[str]) -> None:
+    """Persist an unpublished draft and its ordered source selection."""
+    with _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO drafts (
+                id, title, intent, format, platform, language, audience, objective, tone,
+                personal_angle, source_summary, generated_content, content,
+                status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                draft.id,
+                draft.title,
+                draft.intent,
+                draft.format.value,
+                draft.platform,
+                draft.language,
+                draft.audience,
+                draft.objective,
+                draft.tone,
+                draft.personal_angle,
+                draft.source_summary,
+                draft.generated_content,
+                draft.content,
+                draft.status.value,
+                draft.created_at.isoformat(),
+                draft.updated_at.isoformat(),
+            ),
+        )
+        conn.executemany(
+            """
+            INSERT INTO draft_article (draft_id, article_id, position)
+            VALUES (?, ?, ?)
+            """,
+            [(draft.id, article_id, position) for position, article_id in enumerate(article_ids)],
+        )
+
+
+def list_drafts(limit: int = 100, offset: int = 0) -> list[dict]:
+    """Return saved draft cards, newest edited first."""
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT d.id, d.title, d.format, d.platform, d.language, d.audience, d.objective,
+                   d.tone, d.personal_angle, d.intent, d.status, d.created_at, d.updated_at,
+                   COUNT(da.article_id) AS article_count
+            FROM drafts AS d
+            LEFT JOIN draft_article AS da ON da.draft_id = d.id
+            GROUP BY d.id
+            ORDER BY d.updated_at DESC, d.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def count_drafts() -> int:
+    with _db() as conn:
+        return conn.execute("SELECT COUNT(*) FROM drafts").fetchone()[0]
+
+
+def get_draft_detail(draft_id: str) -> dict | None:
+    """Return a draft with the library entries used to generate it."""
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        draft = conn.execute("SELECT * FROM drafts WHERE id = ?", (draft_id,)).fetchone()
+        if draft is None:
+            return None
+        articles = conn.execute(
+            """
+            SELECT a.id, a.title, a.url, a.category, a.summary, da.position
+            FROM draft_article AS da
+            JOIN articles AS a ON a.id = da.article_id
+            WHERE da.draft_id = ?
+            ORDER BY da.position ASC
+            """,
+            (draft_id,),
+        ).fetchall()
+        result = dict(draft)
+        result["articles"] = [dict(article) for article in articles]
+        return result
+
+
+def get_articles_for_draft(article_ids: list[str]) -> list[dict]:
+    """Load selected source text while preserving the selection order."""
+    if not article_ids:
+        return []
+    placeholders = ", ".join("?" for _ in article_ids)
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            f"""
+            SELECT a.id, a.title, a.url, a.content, a.summary, a.category,
+                   s.name AS source_name
+            FROM articles AS a
+            LEFT JOIN sources AS s ON s.id = a.source_id
+            WHERE a.id IN ({placeholders})
+            """,
+            article_ids,
+        ).fetchall()
+    by_id = {row["id"]: dict(row) for row in rows}
+    return [by_id[article_id] for article_id in article_ids if article_id in by_id]
+
+
+def update_draft(
+    draft_id: str,
+    *,
+    title: str | object = _UNSET,
+    intent: str | object = _UNSET,
+    platform: str | object = _UNSET,
+    language: str | object = _UNSET,
+    audience: str | object = _UNSET,
+    objective: str | object = _UNSET,
+    tone: str | object = _UNSET,
+    personal_angle: str | object = _UNSET,
+    content: str | object = _UNSET,
+    status: str | object = _UNSET,
+    source_summary: str | object = _UNSET,
+    generated_content: str | object = _UNSET,
+) -> dict | None:
+    """Persist manual edits (and regeneration output) without changing sources."""
+    fields = (
+        ("title", title),
+        ("intent", intent),
+        ("platform", platform),
+        ("language", language),
+        ("audience", audience),
+        ("objective", objective),
+        ("tone", tone),
+        ("personal_angle", personal_angle),
+        ("content", content),
+        ("status", status),
+        ("source_summary", source_summary),
+        ("generated_content", generated_content),
+    )
+    with _db() as conn:
+        if conn.execute("SELECT 1 FROM drafts WHERE id = ?", (draft_id,)).fetchone() is None:
+            return None
+        columns = [f"{column} = ?" for column, value in fields if value is not _UNSET]
+        values = [value for _, value in fields if value is not _UNSET]
+        if columns:
+            columns.append("updated_at = ?")
+            values.append(datetime.now(timezone.utc).isoformat())
+            conn.execute(
+                f"UPDATE drafts SET {', '.join(columns)} WHERE id = ?",
+                (*values, draft_id),
+            )
+    return get_draft_detail(draft_id)
 
 
 def delete_article(article_id: str) -> bool:

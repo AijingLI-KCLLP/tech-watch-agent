@@ -88,10 +88,110 @@ h2 {
   font-size: 1.35rem;
 }
 
+.masthead-drafts-link {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: end;
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+}
+
 .watch-panel,
 .library-panel,
 .ask-panel {
   border-bottom: 1px solid var(--line);
+}
+
+.draft-composer {
+  padding: 3rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.draft-copy {
+  max-width: 44rem;
+  margin: 0 0 1.1rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.draft-form {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 1px dashed var(--line);
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.draft-form .editor-fields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 1rem;
+}
+
+.draft-form .editor-fields > div,
+.draft-editor .editor-fields > div {
+  display: grid;
+  gap: 0.45rem;
+  align-content: start;
+  min-width: 0;
+}
+
+.draft-form .editor-fields > div:nth-child(n + 4) {
+  grid-column: 1 / -1;
+}
+
+.draft-form #draft-intent {
+  min-height: 6.5rem;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.suggestion-option {
+  padding: 0.32rem 0.5rem;
+  border-color: var(--line);
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.62rem;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.suggestion-option:hover:not(:disabled),
+.suggestion-option.is-selected {
+  color: var(--paper);
+  background: var(--accent-dark);
+  transform: none;
+}
+
+.draft-form label,
+.draft-editor label {
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+
+.draft-form > label {
+  margin-bottom: -0.55rem;
+}
+
+.web-enrichment-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+}
+
+.web-enrichment-option input {
+  width: auto;
+  accent-color: var(--accent-dark);
 }
 
 .discovery-panel {
@@ -517,6 +617,31 @@ button:hover:not(:disabled) {
   text-underline-offset: 0.2em;
 }
 
+.draft-title {
+  padding: 0;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 1.3rem;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+}
+
+.draft-title:hover:not(:disabled) {
+  color: var(--accent-dark);
+  background: transparent;
+  transform: none;
+}
+
+.draft-meta {
+  margin: 0;
+  text-align: left;
+}
+
 .category-badge {
   flex: 0 0 auto;
   padding: 0.18rem 0.34rem;
@@ -633,6 +758,11 @@ button:hover:not(:disabled) {
 
 .editor-form #edit-content {
   min-height: 18rem;
+  line-height: 1.5;
+}
+
+.draft-editor #draft-edit-content {
+  min-height: 22rem;
   line-height: 1.5;
 }
 
@@ -836,6 +966,14 @@ select {
   .library-panel,
   .ask-panel {
     padding: 2rem 0;
+  }
+
+  .draft-form .editor-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .draft-form .editor-fields > div:nth-child(n + 4) {
+    grid-column: auto;
   }
 
   .chat-stage {

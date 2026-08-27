@@ -35,5 +35,9 @@ MAX_PODCAST_AUDIO_BYTES = int(os.getenv("MAX_PODCAST_AUDIO_BYTES", str(750 * 102
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")
 WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 
+# Draft publishing workflow. Source text is bounded before it reaches the local LLM.
+MAX_DRAFT_ARTICLES = int(os.getenv("MAX_DRAFT_ARTICLES", "5"))
+MAX_DRAFT_ARTICLE_CHARS = int(os.getenv("MAX_DRAFT_ARTICLE_CHARS", "2500"))
+
 # "vision" is reserved for a future multimodal-model extractor.
 IMAGE_EXTRACTION_MODE = os.getenv("IMAGE_EXTRACTION_MODE", "ocr").strip().lower()

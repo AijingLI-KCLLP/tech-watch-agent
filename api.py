@@ -10,13 +10,16 @@ from adapters.discovery import discover_topics
 from adapters.store import (
     delete_article,
     count_articles,
+    count_drafts,
+    get_draft_detail,
     get_article_detail,
     get_input_asset_file,
     init_db,
     list_articles,
+    list_drafts,
 )
 from config import MAX_UPLOAD_BYTES, ROOT, UPLOADS_DIR
-from core.models import Category, OriginalType, SourceVerificationStatus
+from core.models import Category, DraftFormat, DraftStatus, OriginalType, SourceVerificationStatus
 from services.agent_service import (
     add_article_by_url,
     add_pasted_text,
@@ -27,6 +30,8 @@ from services.agent_service import (
     watch_topic,
 )
 from services.article_review_service import edit_article as update_article
+from services.publish_service import create_draft, regenerate_draft
+from adapters.store import update_draft
 
 app = FastAPI(
     title="Tech Watch Agent API",
@@ -162,6 +167,82 @@ class ArticleUpdateRequest(BaseModel):
     summary: str | None = Field(default=None, max_length=5_000)
     category: Category | None = None
     tags: list[str] | None = Field(default=None, max_length=30)
+
+
+class DraftCreateRequest(BaseModel):
+    intent: str = Field(min_length=1, max_length=2_000)
+    format: DraftFormat
+    platform: str = Field(default="none", min_length=1, max_length=80)
+    language: str = Field(min_length=1, max_length=80)
+    audience: str = Field(min_length=1, max_length=300)
+    objective: str = Field(min_length=1, max_length=300)
+    tone: str = Field(min_length=1, max_length=300)
+    personal_angle: str = Field(min_length=1, max_length=2_000)
+    enrich_with_web: bool = True
+
+
+class DraftUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    intent: str | None = Field(default=None, min_length=1, max_length=2_000)
+    platform: str | None = Field(default=None, min_length=1, max_length=80)
+    language: str | None = Field(default=None, min_length=1, max_length=80)
+    audience: str | None = Field(default=None, min_length=1, max_length=300)
+    objective: str | None = Field(default=None, min_length=1, max_length=300)
+    tone: str | None = Field(default=None, min_length=1, max_length=300)
+    personal_angle: str | None = Field(default=None, min_length=1, max_length=2_000)
+    content: str | None = Field(default=None, min_length=1, max_length=100_000)
+    status: DraftStatus | None = None
+
+
+class DraftArticleResponse(BaseModel):
+    id: str
+    title: str
+    url: str | None
+    category: str
+    summary: str | None
+    position: int
+
+
+class DraftResponse(BaseModel):
+    id: str
+    title: str
+    intent: str
+    format: DraftFormat
+    platform: str
+    language: str
+    audience: str
+    objective: str
+    tone: str
+    personal_angle: str
+    source_summary: str
+    generated_content: str
+    content: str
+    status: DraftStatus
+    created_at: str
+    updated_at: str
+    articles: list[DraftArticleResponse]
+
+
+class DraftListItemResponse(BaseModel):
+    id: str
+    title: str
+    intent: str
+    format: DraftFormat
+    platform: str
+    language: str
+    audience: str
+    objective: str
+    tone: str
+    personal_angle: str
+    status: DraftStatus
+    created_at: str
+    updated_at: str
+    article_count: int
+
+
+class DraftPageResponse(BaseModel):
+    items: list[DraftListItemResponse]
+    total: int
 
 
 @app.get("/health")
@@ -342,6 +423,66 @@ def remove_article(article_id: str) -> Response:
     if not delete_article(article_id):
         raise HTTPException(status_code=404, detail="Article not found.")
     return Response(status_code=204)
+
+
+@app.get("/drafts", response_model=DraftPageResponse)
+def drafts() -> DraftPageResponse:
+    init_db()
+    return {"items": list_drafts(), "total": count_drafts()}
+
+
+@app.post("/drafts", response_model=DraftResponse, status_code=201)
+def add_draft(request: DraftCreateRequest) -> DraftResponse:
+    init_db()
+    try:
+        return create_draft(**request.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Draft generation failed: {exc}",
+        ) from exc
+
+
+@app.get("/drafts/{draft_id}", response_model=DraftResponse)
+def draft_detail(draft_id: str) -> DraftResponse:
+    init_db()
+    draft = get_draft_detail(draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found.")
+    return draft
+
+
+@app.patch("/drafts/{draft_id}", response_model=DraftResponse)
+def edit_draft(draft_id: str, request: DraftUpdateRequest) -> DraftResponse:
+    updates = request.model_dump(exclude_unset=True, mode="json")
+    if not updates:
+        raise HTTPException(status_code=422, detail="Provide at least one field to update.")
+    if any(value is None for value in updates.values()):
+        raise HTTPException(status_code=422, detail="Draft fields cannot be null.")
+    init_db()
+    draft = update_draft(draft_id, **updates)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found.")
+    return draft
+
+
+@app.post("/drafts/{draft_id}/regenerate", response_model=DraftResponse)
+def regenerate_saved_draft(draft_id: str) -> DraftResponse:
+    init_db()
+    try:
+        draft = regenerate_draft(draft_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Draft regeneration failed: {exc}",
+        ) from exc
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found.")
+    return draft
 
 
 @app.post("/watch", response_model=WatchResponse)

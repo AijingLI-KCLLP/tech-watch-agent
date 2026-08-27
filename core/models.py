@@ -36,6 +36,16 @@ class OriginalType(str, Enum):
     PDF = "pdf"
 
 
+class DraftFormat(str, Enum):
+    NOTE = "note"
+    POST = "post"
+
+
+class DraftStatus(str, Enum):
+    DRAFT = "draft"
+    REVIEWED = "reviewed"
+
+
 class SourceVerificationStatus(str, Enum):
     VERIFIED = "verified"
     PLAUSIBLE = "plausible"
@@ -64,6 +74,27 @@ class Article(BaseModel):
     n_tags:int = 0
     summary:str | None = None
     original_type:OriginalType | None = None
+
+
+class Draft(BaseModel):
+    """An editable, unpublished piece generated from selected library content."""
+
+    id: str = Field(default_factory=_uid)
+    title: str
+    intent: str
+    format: DraftFormat
+    platform: str
+    language: str
+    audience: str
+    objective: str
+    tone: str
+    personal_angle: str
+    source_summary: str
+    generated_content: str
+    content: str
+    status: DraftStatus = DraftStatus.DRAFT
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
 
 
 class InputAsset(BaseModel):

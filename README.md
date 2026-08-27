@@ -4,17 +4,17 @@ Local knowledge-library agent for collecting articles, enriching them with LLM
 metadata, and answering questions with source citations (RAG).
 
 > **Status — active development.** Search and manual-content ingest,
-> source qualification, tags, categories, the REST API, and the React library
-> UI are available. Generated metadata is advisory and can be edited through
+> source qualification, tags, categories, the REST API, the React library UI,
+> and locally saved publication drafts are available. Generated metadata is advisory and can be edited through
 > `PATCH /articles/{article_id}`. The library's **Manual edit** screen also
 > shows the retained raw input and source-verification result beside the
 > editable normalized article.
 
 ## Workflow
 
-The implemented LangGraph paths are ingest (web search or supplied content) and
-retrieval. The publishing path in the diagram is planned, not currently exposed
-by the application.
+The implemented LangGraph paths are ingest (web search or supplied content),
+retrieval, and draft publishing. Publishing ends at a locally saved, manually
+editable draft: this application never posts to an external platform.
 
 ![docs/diagrams/agent_workflow.png](docs/diagrams/agent_workflow.png)
 
@@ -69,10 +69,12 @@ flowchart LR
     end
 
     subgraph Publish["Republish"]
-        Y[select articles] --> Z[summarize]
+        Y[describe sharing intent] --> YA[select relevant library sources]
+        YA --> YB[optional web enrichment]
+        YB --> Z[summarize]
         Z --> AA[add personal angle]
         AA --> AB[generate post / note]
-        AB --> AC[manual edit]
+        AB --> AC[human review / edit]
     end
 
     T -. persists .-> AD[(SQLite + ChromaDB)]
@@ -83,6 +85,7 @@ flowchart LR
 
 - **Ingest** (`watch`): Tavily search → qualify source → generate tags and category → chunk text → embed chunks → write to SQLite (articles) + ChromaDB (vectors). Text, files, and URLs follow the same enrichment, chunking, embedding, and storage path after extraction.
 - **Retrieve** (`ask`): embed question → retrieve relevant chunks from ChromaDB → LLM answers using only that context. If the library has no sufficiently relevant context, the agent searches and ingests material for the question once, then retries retrieval.
+- **Draft publish** (`drafts`): describe what you want to share → semantically select relevant saved articles → optionally enrich with current web sources → summarize → apply the author's supplied personal angle → generate a post or note → save it in SQLite for human review. English is the default language, with French and Chinese suggestions; audiences, objectives, tones, and platform conventions (LinkedIn, X / Twitter, RedNote, or neutral) remain editable suggestions.
 
 
 ## Stack
@@ -154,6 +157,11 @@ The API is available at:
 - `GET /articles/{article_id}` - returns an article with its source metadata and tags.
 - `PATCH /articles/{article_id}` - updates `title`, normalized `content`, `summary`, `category`, and `tags`. Content edits replace the article's retrieval chunks.
 - `DELETE /articles/{article_id}` - permanently removes an article, its tag links, and its retrieval vectors.
+- `GET /drafts` - lists locally saved, unpublished drafts.
+- `POST /drafts` - generates and saves a draft from a sharing `intent` plus its editorial brief (`format`, `platform`, `language`, `audience`, `objective`, `tone`, and `personal_angle`). It automatically selects relevant library content and, by default, enriches it with web sources before drafting.
+- `GET /drafts/{draft_id}` - returns one draft, including the automatically selected source articles.
+- `PATCH /drafts/{draft_id}` - saves manual edits to the content and editorial brief; no external publication occurs.
+- `POST /drafts/{draft_id}/regenerate` - replaces the draft body from its current source selection and brief after explicit user action.
 - `POST /content/text` - ingests pasted text through `transcribe / normalize`.
 - `POST /content/file` - ingests text, PDF, or image uploads, then verifies a provided source URL or finds a candidate source.
 - `POST /content/url` - inspects the URL `Content-Type`, then ingests HTML, text, PDF, or image content directly.
@@ -205,8 +213,9 @@ The Tech & Code allowlist is oriented around engineering practice rather than
 general product announcements: Cloudflare, Netflix, Shopify, Slack, LinkedIn,
 Stripe, CNCF, InfoQ, IEEE Spectrum, ACM Communications, and Martin Fowler.
 
-All LLM instructions live in [`prompts.json`](prompts.json): `categorize`,
-`tag`, `qualify_source`, and `retrieve_answer`. Edit the relevant template and
+All LLM instructions live in [`prompts.json`](prompts.json): categorization,
+tagging, source qualification, retrieval, and the three draft-publishing
+stages. Edit the relevant template and
 restart the backend to apply it. Template fields such as `{title}`, `{content}`
 and `{question}` are populated by the application; keep them intact. Literal
 JSON braces in a template must be doubled (`{{` and `}}`).
@@ -223,7 +232,7 @@ npm install
 npm run dev
 ```
 
-Open the URL printed by Vite, normally `http://127.0.0.1:5173/`. Vite proxies `/watch`, `/discover`, `/ask`, `/articles`, `/content`, and `/input-assets` to FastAPI on port 8000, so both terminals must be running.
+Open the URL printed by Vite, normally `http://127.0.0.1:5173/`. Vite proxies `/watch`, `/discover`, `/ask`, `/articles`, `/drafts`, `/content`, and `/input-assets` to FastAPI on port 8000, so both terminals must be running. Use the **Drafts** page to reopen and manually edit generated work; it contains no publish button or platform integration.
 
 The old FastAPI-served `web/` frontend remains in the repository temporarily; the active development frontend is `frontend/`.
 
