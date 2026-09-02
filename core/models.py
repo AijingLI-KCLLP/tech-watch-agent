@@ -46,6 +46,11 @@ class DraftStatus(str, Enum):
     REVIEWED = "reviewed"
 
 
+class ChatRole(str, Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
 class SourceVerificationStatus(str, Enum):
     VERIFIED = "verified"
     PLAUSIBLE = "plausible"
@@ -97,6 +102,21 @@ class Draft(BaseModel):
     updated_at: datetime = Field(default_factory=_now)
 
 
+class Conversation(BaseModel):
+    id: str = Field(default_factory=_uid)
+    title: str = "New conversation"
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class ConversationMessage(BaseModel):
+    id: str = Field(default_factory=_uid)
+    conversation_id: str
+    role: ChatRole
+    content: str
+    created_at: datetime = Field(default_factory=_now)
+
+
 class InputAsset(BaseModel):
     """The raw user input and its extraction provenance before Article normalization."""
 
@@ -110,6 +130,7 @@ class InputAsset(BaseModel):
     raw_text: str | None = None
     extracted_text: str | None = None
     provided_source_url: HttpUrl | None = None
+    provided_source_reference: str | None = None
     source_verification_status: SourceVerificationStatus = (
         SourceVerificationStatus.UNVERIFIED
     )

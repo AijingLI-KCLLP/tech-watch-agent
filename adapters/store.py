@@ -10,7 +10,17 @@ from config import (
     SQLITE_PATH
 )
 
-from core.models import Article, Category, Chunk, Draft, InputAsset, Source, Tag
+from core.models import (
+    Article,
+    Category,
+    Chunk,
+    Conversation,
+    ConversationMessage,
+    Draft,
+    InputAsset,
+    Source,
+    Tag,
+)
 
 # SQLite
 
@@ -114,6 +124,7 @@ INPUT_ASSET_SCHEMA = """
         raw_text                        TEXT,
         extracted_text                  TEXT,
         provided_source_url             TEXT,
+        provided_source_reference       TEXT,
         source_verification_status      TEXT NOT NULL DEFAULT 'unverified'
                                         CHECK (source_verification_status IN (
                                             'verified', 'plausible', 'unverified', 'mismatch'
@@ -167,6 +178,30 @@ DRAFT_SCHEMA = """
 
     CREATE INDEX IF NOT EXISTS idx_draft_article_article ON draft_article(article_id);
     CREATE INDEX IF NOT EXISTS idx_draft_updated_at ON drafts(updated_at DESC);
+"""
+
+
+CONVERSATION_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS conversations
+    (
+        id         TEXT PRIMARY KEY,
+        title      TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS conversation_messages
+    (
+        id              TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
+        role            TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+        content         TEXT NOT NULL,
+        created_at      TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_conversation_updated_at ON conversations(updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_conversation_message_order
+        ON conversation_messages(conversation_id, created_at ASC);
 """
 
 
@@ -299,7 +334,13 @@ def init_db() -> None:
             conn.execute("PRAGMA foreign_keys = ON")
 
         conn.executescript(INPUT_ASSET_SCHEMA)
+        input_asset_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(input_assets)").fetchall()
+        }
+        if "provided_source_reference" not in input_asset_columns:
+            conn.execute("ALTER TABLE input_assets ADD COLUMN provided_source_reference TEXT")
         conn.executescript(DRAFT_SCHEMA)
+        conn.executescript(CONVERSATION_SCHEMA)
         draft_columns = {
             row[1] for row in conn.execute("PRAGMA table_info(drafts)").fetchall()
         }
@@ -496,12 +537,13 @@ def save_input_asset(asset: InputAsset) -> None:
                 raw_text,
                 extracted_text,
                 provided_source_url,
+                provided_source_reference,
                 source_verification_status,
                 source_verification_reason,
                 source_verification_confidence,
                 verified_source_id,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 asset.id,
@@ -516,6 +558,7 @@ def save_input_asset(asset: InputAsset) -> None:
                 str(asset.provided_source_url)
                 if asset.provided_source_url is not None
                 else None,
+                asset.provided_source_reference,
                 asset.source_verification_status.value,
                 asset.source_verification_reason,
                 asset.source_verification_confidence,
@@ -552,6 +595,7 @@ def list_input_assets(article_id: str) -> list[dict]:
                    raw_text,
                    extracted_text,
                    provided_source_url,
+                   provided_source_reference,
                    source_verification_status,
                    source_verification_reason,
                    source_verification_confidence,
@@ -1039,6 +1083,94 @@ def update_draft(
                 (*values, draft_id),
             )
     return get_draft_detail(draft_id)
+
+
+def save_conversation(conversation: Conversation) -> None:
+    with _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO conversations (id, title, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                conversation.id,
+                conversation.title,
+                conversation.created_at.isoformat(),
+                conversation.updated_at.isoformat(),
+            ),
+        )
+
+
+def list_conversations(limit: int = 100) -> list[dict]:
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT c.id, c.title, c.created_at, c.updated_at,
+                   COUNT(m.id) AS message_count
+            FROM conversations AS c
+            LEFT JOIN conversation_messages AS m ON m.conversation_id = c.id
+            GROUP BY c.id
+            ORDER BY c.updated_at DESC, c.id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_conversation_detail(conversation_id: str) -> dict | None:
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        conversation = conn.execute(
+            "SELECT * FROM conversations WHERE id = ?", (conversation_id,)
+        ).fetchone()
+        if conversation is None:
+            return None
+        messages = conn.execute(
+            """
+            SELECT id, conversation_id, role, content, created_at
+            FROM conversation_messages
+            WHERE conversation_id = ?
+            ORDER BY created_at ASC, id ASC
+            """,
+            (conversation_id,),
+        ).fetchall()
+        result = dict(conversation)
+        result["messages"] = [dict(message) for message in messages]
+        return result
+
+
+def save_conversation_message(message: ConversationMessage) -> None:
+    with _db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO conversation_messages (id, conversation_id, role, content, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                message.id,
+                message.conversation_id,
+                message.role.value,
+                message.content,
+                message.created_at.isoformat(),
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("Could not save conversation message.")
+        conn.execute(
+            "UPDATE conversations SET updated_at = ? WHERE id = ?",
+            (message.created_at.isoformat(), message.conversation_id),
+        )
+
+
+def update_conversation_title(conversation_id: str, title: str) -> bool:
+    with _db() as conn:
+        cursor = conn.execute(
+            "UPDATE conversations SET title = ? WHERE id = ?",
+            (title, conversation_id),
+        )
+        return cursor.rowcount == 1
 
 
 def delete_article(article_id: str) -> bool:

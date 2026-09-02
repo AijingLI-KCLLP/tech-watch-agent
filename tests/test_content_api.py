@@ -37,6 +37,25 @@ class ContentApiTest(unittest.TestCase):
             provided_source_url="https://example.com/note",
         )
 
+    @patch("api.add_pasted_text")
+    def test_pasted_text_can_keep_a_non_url_source_reference(self, add_pasted_text) -> None:
+        add_pasted_text.return_value = {
+            "article": {"id": "article-1", "title": "A note", "url": None},
+            "input_asset_id": "asset-1", "chunk_count": 1,
+            "source_verification_status": "unverified",
+        }
+
+        response = self.client.post(
+            "/content/text",
+            json={"text": "A useful note.", "provided_source_reference": "My notes from a client call"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        add_pasted_text.assert_called_once_with(
+            text="A useful note.", title=None, provided_source_url=None,
+            provided_source_reference="My notes from a client call",
+        )
+
     @patch("api.add_uploaded_file")
     def test_file_upload_is_forwarded_to_the_service(self, add_uploaded_file) -> None:
         add_uploaded_file.return_value = {

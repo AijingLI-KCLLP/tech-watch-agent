@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 
 from adapters import store
 from api import app
-from core.models import Article, Draft, DraftFormat
-from services import publish_service
+from core.models import Article, ChatRole, Conversation, ConversationMessage, Draft, DraftFormat
+from services import conversation_service, publish_service
 
 
 class DraftStoreTest(unittest.TestCase):
@@ -52,6 +52,42 @@ class DraftStoreTest(unittest.TestCase):
         self.assertEqual([article["id"] for article in detail["articles"]], [self.article_ids[1], self.article_ids[0]])
         self.assertEqual(updated["content"], "Manually edited.")
         self.assertEqual(updated["generated_content"], "Generated.")
+
+    def test_conversation_persists_messages_in_order(self) -> None:
+        conversation = Conversation(title="RAG follow-up")
+        store.save_conversation(conversation)
+        store.save_conversation_message(
+            ConversationMessage(
+                conversation_id=conversation.id,
+                role=ChatRole.USER,
+                content="What changed?",
+            )
+        )
+        store.save_conversation_message(
+            ConversationMessage(
+                conversation_id=conversation.id,
+                role=ChatRole.ASSISTANT,
+                content="Here is the grounded answer.",
+            )
+        )
+
+        detail = store.get_conversation_detail(conversation.id)
+        listed = store.list_conversations()
+
+        self.assertEqual([message["role"] for message in detail["messages"]], ["user", "assistant"])
+        self.assertEqual(listed[0]["message_count"], 2)
+
+    @patch("services.conversation_service.ask_question")
+    def test_conversation_uses_prior_turns_for_a_follow_up(self, ask_question) -> None:
+        ask_question.return_value = {"question": "What changed?", "answer": "A grounded answer."}
+        conversation = conversation_service.create_conversation()
+
+        conversation_service.ask_in_conversation(conversation["id"], "What changed?")
+        conversation_service.ask_in_conversation(conversation["id"], "Why does it matter?")
+
+        self.assertEqual(ask_question.call_count, 2)
+        self.assertEqual(ask_question.call_args_list[0].kwargs["discussion_context"], "")
+        self.assertIn("What changed?", ask_question.call_args_list[1].kwargs["discussion_context"])
 
 
 class PublishServiceTest(unittest.TestCase):

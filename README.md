@@ -16,70 +16,58 @@ The implemented LangGraph paths are ingest (web search or supplied content),
 retrieval, and draft publishing. Publishing ends at a locally saved, manually
 editable draft: this application never posts to an external platform.
 
-![docs/diagrams/agent_workflow.png](docs/diagrams/agent_workflow.png)
-
 ```mermaid
-flowchart LR
-    subgraph Ingest["Ingest"]
-        A[watch topic] --> B[search web]
+    flowchart LR
+        subgraph Ingest["Ingest"]
+            A[watch topic] --> B[search web]
 
-        C[add content] --> D[paste text]
-        C --> E[add file]
-        C --> F[add by url]
+            C[add content] --> D[paste text]
+            C --> E[add file]
+            C --> F[add Article by url]
 
-        D --> N[transcribe / normalize]
-        E --> G{file type}
-        G -- text --> AF[transcribe / normalize]
-        G -- pdf --> H[extract text]
-        G -- image --> I[OCR]
-        H --> AF
-        I --> AF
-        AF --> AG{source URL provided?}
-        AG -- yes --> AH[verify source]
-        AG -- no --> AI[find source]
-        AH --> AJ[add Source if verified]
-        AI --> AJ
+            D --> N[transcribe / normalize]
+            E --> G{file type}
+            G -- text --> N
+            G -- pdf --> H[extract text]
+            G -- image --> I[OCR]
+            H --> N
+            I --> N
 
-        F --> J[inspect content type]
-        J -- text/html --> K[fetch direct content]
-        J -- application/pdf --> AM[download]
-        J -- image/* --> AN[download]
-        AM --> H
-        AN --> I
-        K --> AL{content available?}
-        AL -- yes --> N
-        AL -- no / anti crawler --> L[ask for manual file input]
-        L --> E
-    end
+            F --> J[inspect content type]
+            J -- text/html --> K[fetch direct content]
+            J -- pdf --> H
+            J -- image --> I
+            K --> AL{content available?}
+            AL -- yes --> N
+            AL -- no / anti crawler --> L[ask for manual file input]
+            L --> E
+        end
 
-    B --> O[qualify]
-    N --> O
-    AJ --> O
+        B --> O[qualify]
+        N --> O
 
-    O --> P[tag]
-    P --> Q[categorize]
-    Q --> R[chunk]
-    R --> S[embed]
-    S --> T[store]
+        O --> P[tag]
+        P --> Q[categorize]
+        Q --> R[chunk]
+        R --> S[embed]
+        S --> T[store]
 
-    subgraph Retrieve["Retrieve"]
-        U[ask <question>] --> V[embed_query]
-        V --> W[retrieve]
-        W --> X[generate answer]
-    end
+        subgraph Retrieve["Retrieve"]
+            U[ask <question>] --> V[embed_query]
+            V --> W[retrieve]
+            W --> X[generate answer]
+        end
 
-    subgraph Publish["Republish"]
-        Y[describe sharing intent] --> YA[select relevant library sources]
-        YA --> YB[optional web enrichment]
-        YB --> Z[summarize]
-        Z --> AA[add personal angle]
-        AA --> AB[generate post / note]
-        AB --> AC[human review / edit]
-    end
+        subgraph Publish["Republish"]
+            Y[select articles] --> Z[summarize]
+            Z --> AA[add personal angle]
+            AA --> AB[generate post / note]
+            AB --> AC[manual edit]
+        end
 
-    T -. persists .-> AD[(SQLite + ChromaDB)]
-    AD -. reads .-> W
-    AD -. feeds .-> Y
+        T -. persists .-> AD[(SQLite + ChromaDB)]
+        AD -. reads .-> W
+        AD -. feeds .-> Y
 
 ```
 
@@ -153,6 +141,10 @@ The API is available at:
 - `POST /watch` - searches Tavily, qualifies sources, generates tags and a category, then chunks, embeds, and stores matching articles.
 - `GET /discover/topics?categories=tech_code&categories=ai_automation` - returns recent, clickable news topics for selected technical-watch categories. The default categories are Tech & Code and AI & Automation.
 - `POST /ask` - retrieves relevant chunks and answers from them. When context is missing or insufficient, it searches Tavily, ingests the question topic, then retries once.
+- `GET /conversations` - lists saved Ask discussions.
+- `POST /conversations` - starts a locally persisted discussion.
+- `GET /conversations/{conversation_id}` - returns one discussion and its messages.
+- `POST /conversations/{conversation_id}/ask` - asks a question in that discussion, retains both turns, and uses recent history to support follow-up questions.
 - `GET /articles?limit=10&offset=0` - returns paginated saved articles; the dashboard uses 10, and the all-articles page uses 20.
 - `GET /articles/{article_id}` - returns an article with its source metadata and tags.
 - `PATCH /articles/{article_id}` - updates `title`, normalized `content`, `summary`, `category`, and `tags`. Content edits replace the article's retrieval chunks.
@@ -232,7 +224,7 @@ npm install
 npm run dev
 ```
 
-Open the URL printed by Vite, normally `http://127.0.0.1:5173/`. Vite proxies `/watch`, `/discover`, `/ask`, `/articles`, `/drafts`, `/content`, and `/input-assets` to FastAPI on port 8000, so both terminals must be running. Use the **Drafts** page to reopen and manually edit generated work; it contains no publish button or platform integration.
+Open the URL printed by Vite, normally `http://127.0.0.1:5173/`. Vite proxies `/watch`, `/discover`, `/ask`, `/conversations`, `/articles`, `/drafts`, `/content`, and `/input-assets` to FastAPI on port 8000, so both terminals must be running. Use **History** to revisit or continue a saved Ask discussion. Use the **Drafts** page to reopen and manually edit generated work; it contains no publish button or platform integration.
 
 The old FastAPI-served `web/` frontend remains in the repository temporarily; the active development frontend is `frontend/`.
 

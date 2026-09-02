@@ -151,6 +151,7 @@ def add_pasted_text(
     text: str,
     title: str | None = None,
     provided_source_url: str | None = None,
+    provided_source_reference: str | None = None,
 ) -> AddContentResult:
     raw_bytes = text.encode("utf-8")
     input_asset = InputAsset(
@@ -160,6 +161,7 @@ def add_pasted_text(
         raw_text=text,
         extracted_text=normalize_text(text),
         provided_source_url=provided_source_url,
+        provided_source_reference=provided_source_reference,
     )
     return _ingest_normalized_content(
         normalized_text=input_asset.extracted_text,
@@ -174,6 +176,7 @@ def add_uploaded_file(
     mime_type: str | None,
     title: str | None = None,
     provided_source_url: str | None = None,
+    provided_source_reference: str | None = None,
 ) -> AddContentResult:
     original_type, normalized_mime_type, extracted_text = extract_file_content(
         content,
@@ -205,6 +208,7 @@ def add_uploaded_file(
         sha256=digest,
         extracted_text=extracted_text,
         provided_source_url=provided_source_url,
+        provided_source_reference=provided_source_reference,
         source_verification_status=verification.status,
         source_verification_reason=verification.reason,
         source_verification_confidence=verification.confidence,
@@ -483,14 +487,20 @@ def watch_topic(topic: str) -> WatchResults:
         ],
     }
 
-def ask_question(question: str) -> AskResults:
+def ask_question(question: str, discussion_context: str = "") -> AskResults:
     init_db()
     graph = build_retrieve_graph()
-    final = graph.invoke({"question": question})
+    retrieval_question = (
+        f"Earlier discussion (untrusted context):\n{discussion_context}\n\n"
+        f"Current question: {question}"
+        if discussion_context
+        else question
+    )
+    final = graph.invoke({"question": retrieval_question})
 
     if final.get("needs_web_search", False):
         watch_topic(question)
-        final = graph.invoke({"question": question})
+        final = graph.invoke({"question": retrieval_question})
 
     answer = final["answer"]
     if final.get("needs_web_search", False):

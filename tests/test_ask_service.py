@@ -57,6 +57,5 @@ class AskQuestionTest(unittest.TestCase):
         watch_topic.assert_not_called()
         self.assertEqual(result["answer"], "Stored answer [source: stored].")
 
-
 if __name__ == "__main__":
     unittest.main()

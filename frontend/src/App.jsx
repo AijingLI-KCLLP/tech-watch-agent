@@ -35,6 +35,22 @@ function formatCategory(category) {
   return (category || "inbox").replaceAll("_", " ");
 }
 
+function MessageContent({ content, onEditArticle, role }) {
+  if (role !== "assistant") return content;
+  const references = /(\[source:\s*([a-z0-9-]+)\]|\[([a-f0-9]{16,})\]|【([a-f0-9]{16,})】)/gi;
+  const parts = [];
+  let cursor = 0;
+  let match;
+  while ((match = references.exec(content)) !== null) {
+    if (match.index > cursor) parts.push(content.slice(cursor, match.index));
+    const articleId = match[2] || match[3] || match[4];
+    parts.push(<button className="source-reference" key={`${articleId}-${match.index}`} onClick={() => onEditArticle(articleId)} type="button">{match[1]}</button>);
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < content.length) parts.push(content.slice(cursor));
+  return parts.length ? parts : content;
+}
+
 function ArticleList({ articles, deletingArticleId, error, onDelete, onEdit }) {
   if (error) {
     return <p className="empty-state">Could not load articles: {error}</p>;
@@ -197,6 +213,7 @@ function ArticleEditor({ articleId, onClose, onSaved }) {
                   <p><strong>{sourceVerificationLabel(asset.source_verification_status)}</strong>{asset.source_verification_confidence !== null && ` · ${Math.round(asset.source_verification_confidence * 100)}% confidence`}</p>
                   {asset.source_verification_reason && <p>{asset.source_verification_reason}</p>}
                   {asset.provided_source_url && <a href={asset.provided_source_url} rel="noreferrer" target="_blank">Provided source URL</a>}
+                  {asset.provided_source_reference && <p>Original source: {asset.provided_source_reference}</p>}
                 </div>
               ))}
             </section>
@@ -228,6 +245,7 @@ function ArticleEditor({ articleId, onClose, onSaved }) {
 function pageFromHash() {
   if (window.location.hash === "#/articles") return "articles";
   if (window.location.hash === "#/drafts") return "drafts";
+  if (window.location.hash === "#/conversations") return "conversations";
   return "dashboard";
 }
 
@@ -442,6 +460,37 @@ function DraftsPage() {
   </section>;
 }
 
+function ConversationHistoryPage({ onEditArticle, onOpen }) {
+  const [conversations, setConversations] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    request("/conversations")
+      .then(setConversations)
+      .catch((loadError) => setError(errorMessage(loadError)));
+  }, []);
+
+  async function inspectConversation(id) {
+    setError("");
+    try { setSelected(await request(`/conversations/${id}`)); } catch (loadError) { setError(errorMessage(loadError)); }
+  }
+
+  return <section className="conversation-history-page" aria-labelledby="history-title">
+    <div className="section-heading"><div><p className="section-number">HISTORY</p><h1 id="history-title">Ask conversations</h1></div><a className="library-link" href="#/">Dashboard</a></div>
+    <p className="draft-copy">Your RAG discussions are saved locally. Open one to continue asking in the same context.</p>
+    {error && <p className="empty-state">Could not load conversations: {error}</p>}
+    {conversations === null && !error && <p className="empty-state">Loading conversations…</p>}
+    {conversations?.length === 0 && <p className="empty-state">No conversations yet. Ask the cabinet a question to start one.</p>}
+    <div className="conversation-history-grid">
+      <div className="conversation-list">{conversations?.map((conversation) => <button className={selected?.id === conversation.id ? "conversation-card is-selected" : "conversation-card"} key={conversation.id} onClick={() => inspectConversation(conversation.id)} type="button"><strong>{conversation.title}</strong><span>{conversation.message_count} messages · {formatArticleDate(conversation.updated_at)}</span></button>)}</div>
+      <section className="conversation-preview" aria-live="polite">
+        {!selected ? <p>Select a conversation to read it.</p> : <><div className="editor-heading"><h2>{selected.title}</h2><button onClick={() => onOpen(selected)} type="button">Continue</button></div><div className="chat-history">{selected.messages.map((message) => <div className={`chat-message ${message.role}`} key={message.id}><span>{message.role === "user" ? "You" : "Cabinet"}</span><p><MessageContent content={message.content} onEditArticle={onEditArticle} role={message.role} /></p></div>)}</div></>}
+      </section>
+    </div>
+  </section>;
+}
+
 function FilePreview({ file, imagePreviewUrl, onClear }) {
   if (!file) return null;
 
@@ -545,12 +594,14 @@ export default function App() {
   const [deletingArticleId, setDeletingArticleId] = useState("");
   const [editingArticleId, setEditingArticleId] = useState("");
   const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("Ask a question to begin.");
+  const [conversationId, setConversationId] = useState("");
+  const [chatMessages, setChatMessages] = useState([]);
   const [isAsking, setIsAsking] = useState(false);
   const fileInputRef = useRef(null);
 
   const showAllArticles = page === "articles";
   const isDraftsPage = page === "drafts";
+  const isConversationsPage = page === "conversations";
 
   const articleLimit = showAllArticles ? LIBRARY_PAGE_SIZE : DASHBOARD_ARTICLE_LIMIT;
   const articleOffset = showAllArticles ? libraryPage * LIBRARY_PAGE_SIZE : 0;
@@ -656,13 +707,14 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!showAllArticles && !isDraftsPage) loadDiscovery();
-  }, [showAllArticles, isDraftsPage]);
+    if (!showAllArticles && !isDraftsPage && !isConversationsPage) loadDiscovery();
+  }, [showAllArticles, isDraftsPage, isConversationsPage]);
 
   async function handleAddContent(event) {
     event.preventDefault();
     const title = contentTitle.trim();
-    const providedSourceUrl = contentSourceUrl.trim();
+    const sourceReference = contentSourceUrl.trim();
+    const providedSourceUrl = /^https?:\/\//i.test(sourceReference) ? sourceReference : "";
 
     setIsAddingContent(true);
     setContentStatus("Transcribing, normalizing, embedding, and storing...");
@@ -673,6 +725,7 @@ export default function App() {
         formData.append("file", contentFile);
         if (title) formData.append("title", title);
         if (providedSourceUrl) formData.append("provided_source_url", providedSourceUrl);
+        if (sourceReference) formData.append("provided_source_reference", sourceReference);
         result = await request("/content/file", { method: "POST", body: formData });
       } else {
         const text = contentText.trim();
@@ -687,6 +740,7 @@ export default function App() {
             text,
             ...(title && { title }),
             ...(providedSourceUrl && { provided_source_url: providedSourceUrl }),
+            ...(sourceReference && { provided_source_reference: sourceReference }),
           }),
         });
       }
@@ -774,16 +828,26 @@ export default function App() {
     if (!normalizedQuestion) return;
 
     setIsAsking(true);
-    setAnswer("Searching the cabinet...");
     try {
-      const result = await request("/ask", {
+      let activeConversationId = conversationId;
+      if (!activeConversationId) {
+        const conversation = await request("/conversations", { method: "POST" });
+        activeConversationId = conversation.id;
+        setConversationId(activeConversationId);
+      }
+      const result = await request(`/conversations/${activeConversationId}/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: normalizedQuestion }),
       });
-      setAnswer(result.answer);
+      setChatMessages(result.messages);
+      setQuestion("");
     } catch (error) {
-      setAnswer(`Question failed: ${errorMessage(error)}`);
+      setChatMessages((current) => [...current, {
+        id: `error-${Date.now()}`,
+        role: "assistant",
+        content: `Question failed: ${errorMessage(error)}`,
+      }]);
     } finally {
       setIsAsking(false);
     }
@@ -814,10 +878,17 @@ export default function App() {
         <a className="wordmark" href="#/">Signal Cabinet</a>
         <p className="eyebrow">PERSONAL TECH WATCH / LOCAL RAG</p>
         <p className="intro">Collect the signal, then ask your library what it knows.</p>
-        <a className="masthead-drafts-link" href="#/drafts">Drafts</a>
+        <nav aria-label="Workspace" className="masthead-links"><a href="#/conversations">History</a><a href="#/drafts">Drafts</a></nav>
       </header>
 
-      {isDraftsPage ? <DraftsPage /> : <>
+      {isDraftsPage ? <DraftsPage /> : isConversationsPage ? <ConversationHistoryPage onEditArticle={(articleId) => {
+        setEditingArticleId(articleId);
+        window.location.hash = "#/";
+      }} onOpen={(conversation) => {
+        setConversationId(conversation.id);
+        setChatMessages(conversation.messages);
+        window.location.hash = "#/";
+      }} /> : <>
       {!showAllArticles && <TopicDiscovery
         categories={discoveryCategories}
         isLoading={isDiscovering}
@@ -847,8 +918,8 @@ export default function App() {
             <p className="content-form-title">Or add content</p>
             <label className="sr-only" htmlFor="content-title">Title</label>
             <input id="content-title" maxLength="500" onChange={(event) => setContentTitle(event.target.value)} placeholder="Title (optional)" value={contentTitle} />
-            <label className="sr-only" htmlFor="content-source-url">Source URL</label>
-            <input id="content-source-url" onChange={(event) => setContentSourceUrl(event.target.value)} placeholder="Original source URL (optional)" type="url" value={contentSourceUrl} />
+            <label className="sr-only" htmlFor="content-source-url">Original source</label>
+            <input id="content-source-url" onChange={(event) => setContentSourceUrl(event.target.value)} placeholder="Original source (URL, name, or personal note)" value={contentSourceUrl} />
             <div className="content-composer" onPaste={handleContentPaste}>
               <label className="sr-only" htmlFor="content-text">Text to add</label>
               <textarea disabled={Boolean(contentFile)} id="content-text" maxLength="100000" onChange={(event) => setContentText(event.target.value)} placeholder={contentFile ? "Remove the attached file to paste text." : "Paste a note, article, transcript, or image..."} rows="4" value={contentText} />
@@ -901,9 +972,9 @@ export default function App() {
           <div className="library-heading-actions">
             <p className="count" aria-live="polite">{articles !== null ? `${articleTotal} saved` : ""}</p>
             {showAllArticles ? (
-              <><a className="library-link" href="#/drafts">Drafts</a><a className="library-link" href="#/">Dashboard</a></>
+              <a className="library-link" href="#/">Dashboard</a>
             ) : (
-              <><a className="library-link" href="#/drafts">Drafts</a><a className="library-link" href="#/articles">View all</a></>
+              <a className="library-link" href="#/articles">View all</a>
             )}
           </div>
         </div>
@@ -930,12 +1001,16 @@ export default function App() {
         <div className="ask-copy">
           <p className="section-number">03 / ASK</p>
           <h2 id="ask-title">Ask the cabinet.</h2>
-          <p>Answers are grounded in the articles you collected, with source IDs included where available.</p>
+          <p>Answers are grounded in the articles you collected. This discussion is saved locally.</p>
+          <div className="ask-links"><a className="library-link" href="#/conversations">Open history</a><button className="close-button" onClick={() => { setConversationId(""); setChatMessages([]); }} type="button">New conversation</button></div>
         </div>
         <div className="chat-stage">
           <img alt="Illustration of two cats around a chat box" className="chatbox-art" src="/assets/chatbox.png" />
           <div className="chat-content">
-            <div className="answer" aria-live="polite">{answer}</div>
+            <div className="chat-history" aria-live="polite">
+              {chatMessages.length === 0 ? <p className="empty-chat">What do you want to know?</p> : chatMessages.map((message) => <div className={`chat-message ${message.role}`} key={message.id}><span>{message.role === "user" ? "You" : "Cabinet"}</span><p><MessageContent content={message.content} onEditArticle={setEditingArticleId} role={message.role} /></p></div>)}
+              {isAsking && <div aria-label="Cabinet is thinking" className="chat-message assistant is-loading" role="status"><span>Cabinet</span><p>Thinking<span className="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span></p></div>}
+            </div>
             <form className="ask-form" onSubmit={handleAsk}>
               <label className="sr-only" htmlFor="question">Your question</label>
               <textarea id="question" maxLength="1000" minLength="1" onChange={(event) => setQuestion(event.target.value)} placeholder="What should I understand about AI agents?" required rows="2" value={question} />

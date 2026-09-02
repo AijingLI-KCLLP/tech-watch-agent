@@ -11,12 +11,14 @@ from adapters.store import (
     delete_article,
     count_articles,
     count_drafts,
+    get_conversation_detail,
     get_draft_detail,
     get_article_detail,
     get_input_asset_file,
     init_db,
     list_articles,
     list_drafts,
+    list_conversations,
 )
 from config import MAX_UPLOAD_BYTES, ROOT, UPLOADS_DIR
 from core.models import Category, DraftFormat, DraftStatus, OriginalType, SourceVerificationStatus
@@ -32,6 +34,7 @@ from services.agent_service import (
 from services.article_review_service import edit_article as update_article
 from services.publish_service import create_draft, regenerate_draft
 from adapters.store import update_draft
+from services.conversation_service import ask_in_conversation, create_conversation
 
 app = FastAPI(
     title="Tech Watch Agent API",
@@ -74,10 +77,38 @@ class AskResponse(BaseModel):
     answer: str
 
 
+class ConversationResponse(BaseModel):
+    id: str
+    title: str
+    created_at: str
+    updated_at: str
+
+
+class ConversationMessageResponse(BaseModel):
+    id: str
+    conversation_id: str
+    role: str
+    content: str
+    created_at: str
+
+
+class ConversationDetailResponse(ConversationResponse):
+    messages: list[ConversationMessageResponse]
+
+
+class ConversationListItemResponse(ConversationResponse):
+    message_count: int
+
+
+class ConversationAskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=1_000)
+
+
 class PasteTextRequest(BaseModel):
     text: str = Field(min_length=1, max_length=100_000)
     title: str | None = Field(default=None, max_length=500)
     provided_source_url: HttpUrl | None = None
+    provided_source_reference: str | None = Field(default=None, max_length=1_000)
 
 
 class AddArticleUrlRequest(BaseModel):
@@ -139,6 +170,7 @@ class InputAssetResponse(BaseModel):
     raw_text: str | None
     extracted_text: str | None
     provided_source_url: str | None
+    provided_source_reference: str | None
     source_verification_status: SourceVerificationStatus
     source_verification_reason: str | None
     source_verification_confidence: float | None
@@ -253,15 +285,18 @@ def health() -> dict[str, str]:
 @app.post("/content/text", response_model=AddContentResponse)
 def add_text_content(request: PasteTextRequest) -> AddContentResponse:
     try:
-        return add_pasted_text(
-            text=request.text,
-            title=request.title,
-            provided_source_url=(
+        kwargs = {
+            "text": request.text,
+            "title": request.title,
+            "provided_source_url": (
                 str(request.provided_source_url)
                 if request.provided_source_url is not None
                 else None
             ),
-        )
+        }
+        if request.provided_source_reference:
+            kwargs["provided_source_reference"] = request.provided_source_reference
+        return add_pasted_text(**kwargs)
     except ContentExtractionError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -276,21 +311,25 @@ async def add_file_content(
     file: UploadFile = File(...),
     title: str | None = Form(default=None),
     provided_source_url: HttpUrl | None = Form(default=None),
+    provided_source_reference: str | None = Form(default=None),
 ) -> AddContentResponse:
     content = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Uploaded file exceeds the 25 MB limit.")
 
     try:
-        return add_uploaded_file(
-            content=content,
-            filename=file.filename or "upload",
-            mime_type=file.content_type,
-            title=title,
-            provided_source_url=(
+        kwargs = {
+            "content": content,
+            "filename": file.filename or "upload",
+            "mime_type": file.content_type,
+            "title": title,
+            "provided_source_url": (
                 str(provided_source_url) if provided_source_url is not None else None
             ),
-        )
+        }
+        if provided_source_reference:
+            kwargs["provided_source_reference"] = provided_source_reference
+        return add_uploaded_file(**kwargs)
     except (ContentExtractionError, ValidationError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -520,6 +559,47 @@ def ask(request: AskRequest) -> AskResponse:
             status_code=503,
             detail="Question failed. Check LM Studio and the application logs.",
         ) from exc
+
+
+@app.get("/conversations", response_model=list[ConversationListItemResponse])
+def conversations() -> list[ConversationListItemResponse]:
+    init_db()
+    return list_conversations()
+
+
+@app.post("/conversations", response_model=ConversationDetailResponse, status_code=201)
+def add_conversation() -> ConversationDetailResponse:
+    init_db()
+    return create_conversation()
+
+
+@app.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
+def conversation_detail(conversation_id: str) -> ConversationDetailResponse:
+    init_db()
+    conversation = get_conversation_detail(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return conversation
+
+
+@app.post(
+    "/conversations/{conversation_id}/ask",
+    response_model=ConversationDetailResponse,
+)
+def ask_conversation(
+    conversation_id: str, request: ConversationAskRequest
+) -> ConversationDetailResponse:
+    init_db()
+    try:
+        conversation = ask_in_conversation(conversation_id, request.question)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Conversation answer failed: {exc}",
+        ) from exc
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return conversation
 
 
 @app.get("/", include_in_schema=False)

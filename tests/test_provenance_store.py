@@ -41,6 +41,25 @@ class ProvenanceStoreTest(unittest.TestCase):
             "unverified",
         )
 
+    def test_input_asset_keeps_a_non_url_source_reference(self) -> None:
+        article_id = store.save_article(Article(title="Meeting note", content="Useful content."))
+        asset = InputAsset(
+            article_id=article_id,
+            original_type=OriginalType.TEXT,
+            mime_type="text/plain",
+            sha256="c" * 64,
+            extracted_text="Useful content.",
+            provided_source_reference="Notes from the architecture workshop",
+        )
+        store.save_input_asset(asset)
+
+        detail = store.get_article_detail(article_id)
+
+        self.assertEqual(
+            detail["input_assets"][0]["provided_source_reference"],
+            "Notes from the architecture workshop",
+        )
+
     def test_article_source_column_is_nullable(self) -> None:
         with store._db() as conn:
             columns = {
